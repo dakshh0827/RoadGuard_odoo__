@@ -1,8 +1,11 @@
-// src/context/AuthContext.jsx - COMPLETE UPDATE
+// src/context/AuthContext.jsx - Updated with Role-Based Access Control
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import { api } from '../services/api';
 
 export const AuthContext = createContext(null);
+
+// Admin email - you can move this to environment variables
+const ADMIN_EMAIL = 'admin@yourapp.com'; // Change this to your admin email
 
 // Create and export the useAuth hook
 export const useAuth = () => {
@@ -58,7 +61,16 @@ export const AuthProvider = ({ children }) => {
       // Store tokens
       localStorage.setItem('accessToken', response.data.accessToken);
       localStorage.setItem('refreshToken', response.data.refreshToken);
-      setUser(response.data.user);
+      
+      let userData = response.data.user;
+      
+      // Check if this is an admin login
+      if (email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
+        userData = { ...userData, role: 'ADMIN' };
+        console.log('👑 Admin login detected, setting role to ADMIN');
+      }
+      
+      setUser(userData);
       setPendingVerificationEmail(null);
     } else if (response.requiresVerification) {
       // Handle email verification requirement
@@ -108,7 +120,16 @@ export const AuthProvider = ({ children }) => {
       // Store tokens after successful verification
       localStorage.setItem('accessToken', response.data.accessToken);
       localStorage.setItem('refreshToken', response.data.refreshToken);
-      setUser(response.data.user);
+      
+      let userData = response.data.user;
+      
+      // Check if this is an admin
+      if (email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
+        userData = { ...userData, role: 'ADMIN' };
+        console.log('👑 Admin verification detected, setting role to ADMIN');
+      }
+      
+      setUser(userData);
       setPendingVerificationEmail(null); // Clear pending verification
     }
     
@@ -138,11 +159,41 @@ export const AuthProvider = ({ children }) => {
     setPendingVerificationEmail(null);
   };
 
-  // ADD THIS METHOD: For OAuth login to manually set user data
+  // For OAuth login to manually set user data
   const setUserData = (userData) => {
     console.log('🔧 AuthContext - Setting user data manually:', userData);
+    
+    // Check if this is an admin based on email
+    if (userData.email && userData.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
+      userData = { ...userData, role: 'ADMIN' };
+      console.log('👑 Admin OAuth login detected, setting role to ADMIN');
+    }
+    
     setUser(userData);
     setPendingVerificationEmail(null); // Clear any pending verification
+  };
+
+  // Helper function to check if user has specific role
+  const hasRole = (role) => {
+    return user?.role === role;
+  };
+
+  // Helper function to check if user has any of the specified roles
+  const hasAnyRole = (roles) => {
+    return roles.includes(user?.role);
+  };
+
+  // Get user's dashboard route based on role
+  const getUserDashboardRoute = () => {
+    if (!user?.role) return '/role-selection';
+    
+    const dashboardRoutes = {
+      'CUSTOMER': '/dashboard',
+      'MECHANIC': '/worker-dashboard',
+      'ADMIN': '/admin-dashboard'
+    };
+    
+    return dashboardRoutes[user.role] || '/dashboard';
   };
 
   // The value object that will be provided to all consuming components
@@ -160,7 +211,13 @@ export const AuthProvider = ({ children }) => {
     checkAuthStatus,
     setPendingVerificationEmail,
     clearPendingVerification,
-    setUserData // ADD THIS LINE: Include setUserData in the context value
+    setUserData,
+    // New role-based helper functions
+    hasRole,
+    hasAnyRole,
+    getUserDashboardRoute,
+    // Constants
+    ADMIN_EMAIL
   };
 
   return (

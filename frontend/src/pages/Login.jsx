@@ -1,12 +1,13 @@
+// src/pages/Login.jsx - Updated with Role-Based Routing
 import React, { useEffect } from 'react';
 import { Navigate, Link, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout/Layout';
 import LoginForm from '../components/Auth/LoginForm';
 import SocialAuth from '../components/Auth/SocialAuth';
-import { useAuth } from '../Hooks/useAuth';
+import { useAuth } from '../context/AuthContext';
 
 const Login = () => {
-  const { user, loading, pendingVerificationEmail, setUserData } = useAuth();
+  const { user, loading, pendingVerificationEmail, setUserData, getUserDashboardRoute, ADMIN_EMAIL } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Enhanced debugging
@@ -27,7 +28,7 @@ const Login = () => {
       hasAccessToken: !!accessToken,
       hasRefreshToken: !!refreshToken,
       hasUserParam: !!userParam,
-      accessToken: accessToken?.substring(0, 20) + '...' // Show partial for debugging
+      accessToken: accessToken?.substring(0, 20) + '...'
     });
 
     if (accessToken && refreshToken && userParam) {
@@ -43,6 +44,12 @@ const Login = () => {
         console.log('🔄 Raw user param:', userParam);
         const userData = JSON.parse(decodeURIComponent(userParam));
         console.log('✅ Parsed user data:', userData);
+        
+        // Check if this is an admin user and set role accordingly
+        if (userData.email && userData.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
+          userData.role = 'ADMIN';
+          console.log('👑 Admin OAuth login detected');
+        }
         
         // Set user data with a small delay to ensure context is ready
         setTimeout(() => {
@@ -62,19 +69,7 @@ const Login = () => {
     } else {
       console.log('ℹ️ No OAuth params detected in URL');
     }
-  }, [searchParams, setSearchParams, setUserData]);
-
-  // Test button (remove after debugging)
-  const testSetUser = () => {
-    console.log('🧪 Testing setUserData manually...');
-    setUserData({
-      id: 'test123',
-      email: 'test@test.com',
-      firstName: 'Test',
-      lastName: 'User',
-      isVerified: true
-    });
-  };
+  }, [searchParams, setSearchParams, setUserData, ADMIN_EMAIL]);
 
   if (loading) {
     return (
@@ -86,17 +81,32 @@ const Login = () => {
     );
   }
 
-  // Rest of your redirect logic...
+  // If there's a pending verification email, redirect to verify-email
   if (pendingVerificationEmail) {
     console.log('🔄 Redirecting to verify-email');
     return <Navigate to="/verify-email" replace />;
   }
 
+  // If user is authenticated and verified
   if (user && (user.emailVerified || user.isVerified)) {
-    console.log('🎯 Redirecting to dashboard');
-    return <Navigate to="/dashboard" replace />;
+    // Check if user is admin
+    if (user.email && user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
+      console.log('👑 Admin user detected, redirecting to admin dashboard');
+      return <Navigate to="/admin-dashboard" replace />;
+    }
+    
+    // If user has a role, redirect to their dashboard
+    if (user.role) {
+      console.log('🎯 Redirecting to role-based dashboard:', getUserDashboardRoute());
+      return <Navigate to={getUserDashboardRoute()} replace />;
+    } else {
+      // User is verified but hasn't selected a role yet
+      console.log('🔄 Redirecting to role selection');
+      return <Navigate to="/role-selection" replace />;
+    }
   }
 
+  // If user exists but is not verified
   if (user && !user.emailVerified && !user.isVerified) {
     console.log('📧 Redirecting to verify-email');
     return <Navigate to="/verify-email" replace />;

@@ -1,4 +1,4 @@
-// src/services/api.js - UPDATED
+// src/services/api.js - UPDATED WITH ROLE-BASED ACCESS CONTROL
 import { 
   API_BASE_URL, 
   SERVICE_REQUEST_ENDPOINTS, 
@@ -67,6 +67,17 @@ class ApiService {
         };
       }
 
+      // Handle role-related errors
+      if (response.status === 403 && data.message && data.message.includes('role')) {
+        console.log('API - Detected role-related error');
+        return {
+          success: false,
+          requiresRoleSelection: true,
+          message: data.message,
+          data: data
+        };
+      }
+
       if (!response.ok) {
         console.log('API - Throwing error for status:', response.status);
         throw new Error(data.message || `HTTP error! status: ${response.status}`);
@@ -126,11 +137,59 @@ class ApiService {
     });
   }
 
+  async patch(endpoint, data) {
+    return this.request(endpoint, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
   async delete(endpoint) {
     return this.request(endpoint, { method: 'DELETE' });
   }
 
-  // NEW: Service Request specific methods
+  // AUTH-RELATED METHODS
+  
+  // Role selection method
+  async selectRole(role) {
+    try {
+      const response = await this.post('/auth/select-role', { role });
+      
+      if (response.success) {
+        console.log('Role selected successfully:', role);
+      }
+      
+      return response;
+    } catch (error) {
+      console.error('Error selecting role:', error);
+      throw error;
+    }
+  }
+
+  // Get user profile with role information
+  async getUserProfile() {
+    try {
+      const response = await this.get('/auth/profile');
+      return response;
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+      throw error;
+    }
+  }
+
+  // Update user role (admin only)
+  async updateUserRole(userId, role) {
+    try {
+      const response = await this.patch(`/admin/users/${userId}/role`, { role });
+      return response;
+    } catch (error) {
+      console.error('Error updating user role:', error);
+      throw error;
+    }
+  }
+
+  // SERVICE REQUEST METHODS (Role-based access)
+  
   async createServiceRequest(formData) {
     try {
       // Validate required fields
@@ -206,6 +265,75 @@ class ApiService {
     });
   }
 
+  // MECHANIC-SPECIFIC METHODS
+  
+  async getMechanicServiceRequests(params = {}) {
+    const { page = 1, limit = 10, status, location } = params;
+    const queryParams = new URLSearchParams({
+      page: page.toString(),
+      limit: limit.toString(),
+      ...(status && { status }),
+      ...(location && { location: JSON.stringify(location) })
+    });
+
+    return this.get(`/mechanic/service-requests?${queryParams}`);
+  }
+
+  async acceptServiceRequest(requestId) {
+    return this.post(`/mechanic/service-requests/${requestId}/accept`, {});
+  }
+
+  async updateMechanicAvailability(availability) {
+    return this.patch('/mechanic/availability', { availability });
+  }
+
+  async getMechanicProfile() {
+    return this.get('/mechanic/profile');
+  }
+
+  async updateMechanicProfile(profileData) {
+    return this.put('/mechanic/profile', profileData);
+  }
+
+  // ADMIN-SPECIFIC METHODS
+  
+  async getAllUsers(params = {}) {
+    const { page = 1, limit = 20, role, search } = params;
+    const queryParams = new URLSearchParams({
+      page: page.toString(),
+      limit: limit.toString(),
+      ...(role && { role }),
+      ...(search && { search })
+    });
+
+    return this.get(`/admin/users?${queryParams}`);
+  }
+
+  async getAllServiceRequests(params = {}) {
+    const { page = 1, limit = 20, status, mechanic, customer } = params;
+    const queryParams = new URLSearchParams({
+      page: page.toString(),
+      limit: limit.toString(),
+      ...(status && { status }),
+      ...(mechanic && { mechanic }),
+      ...(customer && { customer })
+    });
+
+    return this.get(`/admin/service-requests?${queryParams}`);
+  }
+
+  async getSystemAnalytics() {
+    return this.get('/admin/analytics');
+  }
+
+  async updateUserStatus(userId, status) {
+    return this.patch(`/admin/users/${userId}/status`, { status });
+  }
+
+  async deleteUser(userId) {
+    return this.delete(`/admin/users/${userId}`);
+  }
+
   // Helper method to validate service request data
   validateServiceRequestData(formData) {
     const errors = [];
@@ -241,6 +369,37 @@ class ApiService {
 
     if (errors.length > 0) {
       throw new Error(errors.join(', '));
+    }
+  }
+
+  // Helper method to check if user has required role for API call
+  validateUserRole(requiredRoles = []) {
+    const userRole = this.getUserRoleFromToken();
+    
+    if (!userRole) {
+      throw new Error('User role not found. Please log in again.');
+    }
+
+    if (requiredRoles.length > 0 && !requiredRoles.includes(userRole)) {
+      throw new Error('You do not have permission to perform this action.');
+    }
+
+    return true;
+  }
+
+  // Helper method to extract user role from token (if stored in JWT)
+  getUserRoleFromToken() {
+    const token = localStorage.getItem('accessToken');
+    
+    if (!token) return null;
+
+    try {
+      // Decode JWT token to get role (if role is stored in token)
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      return payload.role || null;
+    } catch (error) {
+      console.error('Error decoding token:', error);
+      return null;
     }
   }
 }

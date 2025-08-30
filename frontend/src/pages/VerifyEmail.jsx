@@ -1,22 +1,23 @@
-// src/pages/VerifyEmail.jsx - FIXED VERSION
+// src/pages/VerifyEmail.jsx - Updated with Role-Based Routing
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, Navigate, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout/Layout';
 import OTPForm from '../components/Auth/OTPForm';
 import Button from '../components/UI/Button';
-import { useAuth } from '../context/AuthContext'; // Fixed import path
+import { useAuth } from '../context/AuthContext';
 
 const VerifyEmail = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { user, loading, pendingVerificationEmail, clearPendingVerification } = useAuth();
+  const { user, loading, pendingVerificationEmail, clearPendingVerification, getUserDashboardRoute, ADMIN_EMAIL } = useAuth();
   const [email, setEmail] = useState('');
   const [showOTPForm, setShowOTPForm] = useState(false);
-  const [message, setMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
+  const [resendMessage, setResendMessage] = useState('');
   const [error, setError] = useState('');
 
   console.log('🔥 VerifyEmail - RENDER START');
-  console.log('🔥 Current state:', { email, showOTPForm, message, error });
+  console.log('🔥 Current state:', { email, showOTPForm, successMessage, resendMessage, error });
   console.log('🔥 Auth context:', { user, loading, pendingVerificationEmail });
 
   useEffect(() => {
@@ -61,7 +62,7 @@ const VerifyEmail = () => {
       console.log('🔧 Setting email state and showing OTP form');
       setEmail(emailToUse);
       setShowOTPForm(true);
-      setError(''); // Clear any existing errors
+      setError('');
     } else {
       console.log('❌ No email - setting error');
       setError('No email available for verification. Please try logging in again.');
@@ -83,10 +84,20 @@ const VerifyEmail = () => {
       const data = await response.json();
 
       if (data.success) {
-        setMessage('Email verified successfully! Redirecting to dashboard...');
+        setSuccessMessage('Email verified successfully! Redirecting...');
+        
+        // Determine redirect based on role/admin status
+        const redirectDelay = 2000;
+        
         setTimeout(() => {
-          navigate('/dashboard');
-        }, 2000);
+          if (email && email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
+            navigate('/admin-dashboard');
+          } else if (user?.role) {
+            navigate(getUserDashboardRoute());
+          } else {
+            navigate('/role-selection');
+          }
+        }, redirectDelay);
       } else {
         setError(data.message || 'Invalid verification token');
       }
@@ -97,18 +108,33 @@ const VerifyEmail = () => {
 
   const handleOTPSuccess = () => {
     console.log('✅ OTP verification successful');
-    setMessage('Email verified successfully! Redirecting to dashboard...');
+    setSuccessMessage('Email verified successfully! Redirecting...');
+    setResendMessage('');
     clearPendingVerification();
+    
+    // Determine where to redirect after successful verification
     setTimeout(() => {
-      navigate('/dashboard');
+      if (email && email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
+        console.log('👑 Admin verification successful, redirecting to admin dashboard');
+        navigate('/admin-dashboard');
+      } else if (user?.role) {
+        console.log('🎯 User has role, redirecting to their dashboard');
+        navigate(getUserDashboardRoute());
+      } else {
+        console.log('🔄 User needs to select role, redirecting to role selection');
+        navigate('/role-selection');
+      }
     }, 2000);
   };
 
   const handleResendSuccess = () => {
     console.log('📧 OTP resent successfully');
-    setMessage('Verification code sent successfully!');
+    setResendMessage('Verification code sent successfully!');
+    setError('');
+    
+    // Clear the resend message after 3 seconds
     setTimeout(() => {
-      setMessage('');
+      setResendMessage('');
     }, 3000);
   };
 
@@ -124,10 +150,17 @@ const VerifyEmail = () => {
     );
   }
 
-  // If user is already verified, redirect to dashboard
+  // If user is already verified, redirect based on role
   if (user?.isVerified || user?.emailVerified) {
-    console.log('✅ User already verified, redirecting to dashboard');
-    return <Navigate to="/dashboard" replace />;
+    console.log('✅ User already verified, determining redirect...');
+    
+    if (user.email && user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
+      return <Navigate to="/admin-dashboard" replace />;
+    } else if (user.role) {
+      return <Navigate to={getUserDashboardRoute()} replace />;
+    } else {
+      return <Navigate to="/role-selection" replace />;
+    }
   }
 
   // Only redirect to login if we're not loading and have no way to get email
@@ -150,10 +183,20 @@ const VerifyEmail = () => {
               </p>
             </div>
 
-            {message && (
+            {/* Success Message (hides OTP form) */}
+            {successMessage && (
               <div className="mb-6 text-center">
                 <div className="text-green-600 bg-green-50 p-4 rounded-lg border border-green-200">
-                  <p className="text-sm">{message}</p>
+                  <p className="text-sm">{successMessage}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Resend Message (doesn't hide OTP form) */}
+            {resendMessage && !successMessage && (
+              <div className="mb-4 text-center">
+                <div className="text-blue-600 bg-blue-50 p-3 rounded-lg border border-blue-200">
+                  <p className="text-sm">{resendMessage}</p>
                 </div>
               </div>
             )}
@@ -173,8 +216,8 @@ const VerifyEmail = () => {
               </div>
             )}
             
-            {/* Only render OTPForm if we have an email */}
-            {email && showOTPForm && !message && (
+            {/* Only render OTPForm if we have an email and no success message */}
+            {email && showOTPForm && !successMessage && (
               <>
                 <div className="bg-blue-100 p-2 text-xs mb-4 rounded">
                   <p>About to render OTPForm with email: "{email}"</p>

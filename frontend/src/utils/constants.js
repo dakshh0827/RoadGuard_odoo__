@@ -1,6 +1,6 @@
-// src/utils/constants.js - UPDATED
+// src/utils/constants.js - Updated with Role-Based Access Control
 export const API_BASE_URL = 'http://localhost:5001/api';
-export const OAUTH_BASE_URL = 'http://localhost:5001/auth'; // New: separate base for OAuth
+export const OAUTH_BASE_URL = 'http://localhost:5001/auth';
 
 export const VALIDATION_RULES = {
   email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
@@ -12,8 +12,48 @@ export const ROUTES = {
   LOGIN: '/login',
   SIGNUP: '/signup',
   DASHBOARD: '/dashboard',
+  WORKER_DASHBOARD: '/worker-dashboard',
+  ADMIN_DASHBOARD: '/admin-dashboard',
   VERIFY_EMAIL: '/verify-email',
+  ROLE_SELECTION: '/role-selection',
   ROOT: '/'
+};
+
+// Role-based route mappings
+export const DASHBOARD_ROUTES = {
+  CUSTOMER: '/dashboard',
+  MECHANIC: '/worker-dashboard',
+  ADMIN: '/admin-dashboard'
+};
+
+// User roles
+export const USER_ROLES = {
+  CUSTOMER: 'CUSTOMER',
+  MECHANIC: 'MECHANIC',
+  ADMIN: 'ADMIN'
+};
+
+// Role permissions
+export const ROLE_PERMISSIONS = {
+  CUSTOMER: [
+    'CREATE_SERVICE_REQUEST',
+    'VIEW_OWN_REQUESTS',
+    'CANCEL_OWN_REQUESTS',
+    'RATE_SERVICES'
+  ],
+  MECHANIC: [
+    'VIEW_SERVICE_REQUESTS',
+    'ACCEPT_REQUESTS',
+    'UPDATE_REQUEST_STATUS',
+    'VIEW_EARNINGS'
+  ],
+  ADMIN: [
+    'VIEW_ALL_REQUESTS',
+    'MANAGE_USERS',
+    'VIEW_ANALYTICS',
+    'MANAGE_MECHANICS',
+    'SYSTEM_SETTINGS'
+  ]
 };
 
 export const AUTH_ENDPOINTS = {
@@ -25,7 +65,8 @@ export const AUTH_ENDPOINTS = {
   RESEND_OTP: '/auth/resend-otp',
   FORGOT_PASSWORD: '/auth/forgot-password',
   RESET_PASSWORD: '/auth/reset-password',
-  REFRESH_TOKEN: '/auth/refresh-token'
+  REFRESH_TOKEN: '/auth/refresh-token',
+  SELECT_ROLE: '/auth/select-role' // New endpoint for role selection
 };
 
 export const OAUTH_ENDPOINTS = {
@@ -33,7 +74,7 @@ export const OAUTH_ENDPOINTS = {
   GITHUB: '/oauth/github'
 };
 
-// NEW: Service Request Endpoints
+// Service Request Endpoints
 export const SERVICE_REQUEST_ENDPOINTS = {
   CREATE: '/service-requests',
   GET_USER_REQUESTS: '/service-requests',
@@ -42,7 +83,7 @@ export const SERVICE_REQUEST_ENDPOINTS = {
   CANCEL: '/service-requests'
 };
 
-// NEW: Service Type Mappings
+// Service Type Mappings
 export const SERVICE_TYPE_MAPPING = {
   'instant_service': 'EMERGENCY_ASSISTANCE',
   'towing': 'TOWING',
@@ -55,7 +96,7 @@ export const SERVICE_TYPE_MAPPING = {
   'general_repair': 'GENERAL_REPAIR'
 };
 
-// NEW: Vehicle Type Mappings
+// Vehicle Type Mappings
 export const VEHICLE_TYPE_MAPPING = {
   'car': 'CAR',
   'motorcycle': 'MOTORCYCLE',
@@ -72,16 +113,23 @@ export const ERROR_MESSAGES = {
   INVALID_NAME: 'Name must be 2-50 characters, letters only',
   INVALID_OTP: 'Please enter a valid 6-digit code',
   GENERIC_ERROR: 'Something went wrong. Please try again.',
-  // NEW: Service Request specific errors
+  // Service Request specific errors
   LOCATION_REQUIRED: 'Location is required for service request',
   INVALID_COORDINATES: 'Invalid GPS coordinates provided',
   FILE_TOO_LARGE: 'Image file is too large (max 5MB)',
-  INVALID_FILE_TYPE: 'Only image files are allowed'
+  INVALID_FILE_TYPE: 'Only image files are allowed',
+  // Role-related errors
+  ROLE_REQUIRED: 'Please select a role',
+  ROLE_ALREADY_SET: 'Role has already been assigned',
+  UNAUTHORIZED_ROLE: 'You do not have permission to access this area',
+  INVALID_ROLE: 'Invalid role selected'
 };
 
-// NEW: Success Messages
+// Success Messages
 export const SUCCESS_MESSAGES = {
   SERVICE_REQUEST_CREATED: 'Service request created successfully!',
   SERVICE_REQUEST_CANCELLED: 'Service request cancelled successfully!',
-  SERVICE_REQUEST_UPDATED: 'Service request updated successfully!'
+  SERVICE_REQUEST_UPDATED: 'Service request updated successfully!',
+  ROLE_SELECTED: 'Role selected successfully!',
+  PROFILE_UPDATED: 'Profile updated successfully!'
 };

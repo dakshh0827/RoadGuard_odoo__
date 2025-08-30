@@ -1,40 +1,47 @@
-// src/components/Auth/LoginForm.jsx - Updated to redirect to forgot password page
+// src/components/Auth/LoginForm.jsx - Updated with Role-Based Routing
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import Button from '../UI/Button';
 import Input from '../UI/Input';
-import { useAuth } from '../../context/AuthContext'; // Updated import path
+import { useAuth } from '../../context/AuthContext';
 import { useApi } from '../../Hooks/useAPI';
 import { validateForm } from '../../utils/validation';
-import { ROUTES } from '../../utils/constants';
 
 const LoginForm = () => {
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [errors, setErrors] = useState({});
-  
-  const { login } = useAuth();
+ 
+  const { login, getUserDashboardRoute, ADMIN_EMAIL } = useAuth();
   const { loading, error, makeRequest } = useApi();
   const navigate = useNavigate();
-  
+ 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+   
     const validation = validateForm(formData, ['email', 'password']);
-    
+   
     if (!validation.isValid) {
       setErrors(validation.errors);
       return;
     }
-    
+   
     try {
       console.log('🎯 LoginForm - About to call login via makeRequest');
-      
+     
       const result = await makeRequest(() => login(formData.email, formData.password));
       console.log('🎯 LoginForm - Login result:', result);
-      
-      // Only navigate to dashboard if login was actually successful
+     
+      // Only navigate if login was actually successful
       if (result && result.success) {
-        navigate(ROUTES.DASHBOARD);
+        // Check if this is an admin login
+        if (formData.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
+          console.log('👑 Admin login successful, redirecting to admin dashboard');
+          navigate('/admin-dashboard');
+        } else {
+          // For regular users, let the parent component handle the redirect
+          // based on their role and verification status
+          console.log('🎯 Regular user login successful, letting parent handle redirect');
+        }
       } else if (result && result.requiresVerification) {
         console.log('🎯 LoginForm - Verification required, letting Login component handle redirect');
         // Don't do anything here - the Login component will detect pendingVerificationEmail and redirect
@@ -44,11 +51,11 @@ const LoginForm = () => {
       // For any other errors, they'll be shown via the error state from useApi
     }
   };
-  
+ 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
-    
+   
     // Clear error when user starts typing
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }));
@@ -81,7 +88,7 @@ const LoginForm = () => {
           required
           autoComplete="email"
         />
-        
+       
         <Input
           label="Password"
           type="password"
