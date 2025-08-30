@@ -12,6 +12,7 @@ import { generalLimiter } from './middlewares/rateLimiter.js';
 import authRoutes from './routes/auth.js';
 import oauthRoutes from './routes/OAuth.js';
 import serviceRoutes from './routes/serviceRoutes.js';
+import mechanicRoutes from './routes/mechanic.js';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -78,6 +79,7 @@ app.get('/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/auth/oauth', oauthRoutes);  // FIXED: Changed from /api/oauth to /auth/oauth to match Google Console
 app.use('/api/service-requests', serviceRoutes);
+app.use('/api/mechanic', mechanicRoutes);
 
 // 404 handler - FIXED: Safe Express syntax
 app.use((req, res) => {

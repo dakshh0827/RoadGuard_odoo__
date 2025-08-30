@@ -1,4 +1,4 @@
-// src/App.jsx - Updated with Role-Based Access Control
+// src/App.jsx - FIXED VERSION
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
@@ -57,29 +57,29 @@ function App() {
             <Route path="/verify-email" element={<VerifyEmail />} />
             
             {/* Role selection route - accessible for verified users without roles */}
-            <Route path="/role-selection" element={<RoleSelection />} />
+            <Route path="/select-role" element={<RoleSelection />} />
 
-            {/* Customer Dashboard Routes */}
+            {/* FIXED: Customer Dashboard Routes - Use END_USER instead of CUSTOMER */}
             <Route path="/dashboard" element={
-              <RoleProtectedRoute allowedRoles={['CUSTOMER']}>
+              <RoleProtectedRoute allowedRoles={['END_USER']}>
                 <Dashboard />
               </RoleProtectedRoute>
             } />
             
             <Route path="/request-service" element={
-              <RoleProtectedRoute allowedRoles={['CUSTOMER']}>
+              <RoleProtectedRoute allowedRoles={['END_USER']}>
                 <NewRequestPage />
               </RoleProtectedRoute>
             } />
             
             <Route path="/service-history" element={
-              <RoleProtectedRoute allowedRoles={['CUSTOMER']}>
+              <RoleProtectedRoute allowedRoles={['END_USER']}>
                 <ServiceRequestHistory />
               </RoleProtectedRoute>
             } />
             
             <Route path="/workshop/:id" element={
-              <RoleProtectedRoute allowedRoles={['CUSTOMER']}>
+              <RoleProtectedRoute allowedRoles={['END_USER']}>
                 <WorkshopDetailPage />
               </RoleProtectedRoute>
             } />
@@ -98,7 +98,7 @@ function App() {
               </RoleProtectedRoute>
             } />
 
-            {/* Default redirect based on user role */}
+            {/* Default redirect based on user authentication */}
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             
             {/* Catch all route */}

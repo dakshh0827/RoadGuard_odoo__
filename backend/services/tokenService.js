@@ -3,80 +3,129 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 
 class TokenService {
-  static generateAccessToken(payload) {
-    const secret = process.env.JWT_ACCESS_SECRET;
-    if (!secret) {
-      throw new Error('JWT_ACCESS_SECRET environment variable is not set');
-    }
-    
-    return jwt.sign(payload, secret, {
-      expiresIn: process.env.JWT_ACCESS_EXPIRES_IN || '15m',
-    });
+  static generateOTP() {
+    return crypto.randomInt(100000, 999999).toString();
   }
 
-  static generateRefreshToken(payload) {
-    const secret = process.env.JWT_REFRESH_SECRET;
-    if (!secret) {
-      throw new Error('JWT_REFRESH_SECRET environment variable is not set');
+  static generateTokens(user) {
+    // FIXED: Add runtime checks for required environment variables
+    const JWT_SECRET = process.env.JWT_SECRET;
+    const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
+
+    console.log('🔍 JWT_SECRET exists:', !!JWT_SECRET);
+    console.log('🔍 JWT_REFRESH_SECRET exists:', !!JWT_REFRESH_SECRET);
+
+    if (!JWT_SECRET) {
+      throw new Error('JWT_SECRET environment variable is not set. Please add it to your .env file.');
     }
-    
-    return jwt.sign(payload, secret, {
-      expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
-    });
+
+    if (!JWT_REFRESH_SECRET) {
+      throw new Error('JWT_REFRESH_SECRET environment variable is not set. Please add it to your .env file.');
+    }
+
+    const payload = {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      isVerified: user.isVerified,
+    };
+
+    try {
+      const accessToken = jwt.sign(
+        payload,
+        JWT_SECRET,
+        { 
+          expiresIn: process.env.JWT_EXPIRES_IN || '15m',
+          issuer: 'roadside-assistance-api',
+          audience: 'roadside-assistance-client',
+        }
+      );
+
+      const refreshToken = jwt.sign(
+        { id: user.id, email: user.email, role: user.role },
+        JWT_REFRESH_SECRET,
+        { 
+          expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
+          issuer: 'roadside-assistance-api',
+          audience: 'roadside-assistance-client',
+        }
+      );
+
+      return { accessToken, refreshToken };
+    } catch (error) {
+      console.error('❌ Token generation failed:', error);
+      throw error;
+    }
   }
 
   static verifyAccessToken(token) {
-    const secret = process.env.JWT_ACCESS_SECRET;
-    if (!secret) {
-      throw new Error('JWT_ACCESS_SECRET environment variable is not set');
+    const JWT_SECRET = process.env.JWT_SECRET;
+    if (!JWT_SECRET) {
+      throw new Error('JWT_SECRET environment variable is not set');
     }
-    
+
     try {
-      return jwt.verify(token, secret);
+      return jwt.verify(token, JWT_SECRET, {
+        issuer: 'roadside-assistance-api',
+        audience: 'roadside-assistance-client',
+      });
     } catch (error) {
       throw new Error('Invalid access token');
     }
   }
 
   static verifyRefreshToken(token) {
-    const secret = process.env.JWT_REFRESH_SECRET;
-    if (!secret) {
+    const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
+    if (!JWT_REFRESH_SECRET) {
       throw new Error('JWT_REFRESH_SECRET environment variable is not set');
     }
-    
+
     try {
-      return jwt.verify(token, secret);
+      return jwt.verify(token, JWT_REFRESH_SECRET, {
+        issuer: 'roadside-assistance-api',
+        audience: 'roadside-assistance-client',
+      });
     } catch (error) {
       throw new Error('Invalid refresh token');
     }
   }
 
-  static generateTokens(user) {
-    const payload = {
-      id: user.id,
-      email: user.email,
-      isVerified: user.isVerified,
-    };
-
-    const accessToken = this.generateAccessToken(payload);
-    const refreshToken = this.generateRefreshToken(payload);
-
-    return { accessToken, refreshToken };
-  }
-
-  static generateOTP() {
-    return Math.floor(100000 + Math.random() * 900000).toString();
-  }
-
-  static generateVerificationToken() {
-    return crypto.randomBytes(32).toString('hex');
-  }
-
-  static extractTokenFromHeader(authHeader) {
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      throw new Error('Invalid authorization header');
+  static decodeToken(token) {
+    try {
+      return jwt.decode(token);
+    } catch (error) {
+      return null;
     }
-    return authHeader.substring(7);
+  }
+
+  static generatePasswordResetToken(userId) {
+    const JWT_SECRET = process.env.JWT_SECRET;
+    if (!JWT_SECRET) {
+      throw new Error('JWT_SECRET environment variable is not set');
+    }
+
+    return jwt.sign(
+      { userId, type: 'password_reset' },
+      JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+  }
+
+  static verifyPasswordResetToken(token) {
+    const JWT_SECRET = process.env.JWT_SECRET;
+    if (!JWT_SECRET) {
+      throw new Error('JWT_SECRET environment variable is not set');
+    }
+
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET);
+      if (decoded.type !== 'password_reset') {
+        throw new Error('Invalid token type');
+      }
+      return decoded;
+    } catch (error) {
+      throw new Error('Invalid password reset token');
+    }
   }
 }
 

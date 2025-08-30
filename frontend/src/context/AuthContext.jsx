@@ -1,11 +1,8 @@
-// src/context/AuthContext.jsx - Updated with Role-Based Access Control
+// src/context/AuthContext.jsx - FIXED VERSION
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import { api } from '../services/api';
 
 export const AuthContext = createContext(null);
-
-// Admin email - you can move this to environment variables
-const ADMIN_EMAIL = 'admin@yourapp.com'; // Change this to your admin email
 
 // Create and export the useAuth hook
 export const useAuth = () => {
@@ -27,7 +24,6 @@ export const AuthProvider = ({ children }) => {
 
   const checkAuthStatus = async () => {
     try {
-      // Get token from localStorage
       const token = localStorage.getItem('accessToken');
       if (!token) {
         setLoading(false);
@@ -40,7 +36,6 @@ export const AuthProvider = ({ children }) => {
       }
     } catch (error) {
       console.error('Auth check failed:', error);
-      // Clear invalid tokens
       localStorage.removeItem('accessToken');
       localStorage.removeItem('refreshToken');
       setUser(null);
@@ -52,35 +47,30 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     console.log('🚀 AuthContext - Login function called with:', email);
     
-    const response = await api.post('/auth/login', { email, password });
-    
-    console.log('✅ AuthContext - Login response received:', response);
-    
-    if (response.success) {
-      console.log('✅ AuthContext - Login successful');
-      // Store tokens
-      localStorage.setItem('accessToken', response.data.accessToken);
-      localStorage.setItem('refreshToken', response.data.refreshToken);
+    try {
+      const response = await api.post('/auth/login', { email, password });
+      console.log('✅ AuthContext - Login response received:', response);
       
-      let userData = response.data.user;
-      
-      // Check if this is an admin login
-      if (email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
-        userData = { ...userData, role: 'ADMIN' };
-        console.log('👑 Admin login detected, setting role to ADMIN');
+      if (response.success) {
+        console.log('✅ AuthContext - Login successful');
+        localStorage.setItem('accessToken', response.data.accessToken);
+        localStorage.setItem('refreshToken', response.data.refreshToken);
+        setUser(response.data.user);
+        setPendingVerificationEmail(null);
+      } else if (response.requiresVerification) {
+        console.log('📧 AuthContext - Setting pendingVerificationEmail:', email);
+        setPendingVerificationEmail(email);
+      } else if (response.requiresRoleSelection) {
+        // REMOVED: No longer needed since END_USER can login directly
+        console.log('📋 AuthContext - Role selection no longer required for END_USER');
+        // This case shouldn't happen with the fixed backend
       }
       
-      setUser(userData);
-      setPendingVerificationEmail(null);
-    } else if (response.requiresVerification) {
-      // Handle email verification requirement
-      console.log('📧 AuthContext - Setting pendingVerificationEmail:', email);
-      setPendingVerificationEmail(email);
-      // DON'T throw an error - just return the response
-      // This allows the Login component to re-render and detect pendingVerificationEmail
+      return response;
+    } catch (error) {
+      console.error('❌ AuthContext - Login error:', error);
+      throw error;
     }
-    
-    return response;
   };
 
   const signup = async (firstName, lastName, email, password) => {
@@ -92,7 +82,6 @@ export const AuthProvider = ({ children }) => {
     });
     
     if (response.success) {
-      // Set pending verification email after successful signup
       setPendingVerificationEmail(email);
     }
     
@@ -105,7 +94,6 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
-      // Clear tokens and user state
       localStorage.removeItem('accessToken');
       localStorage.removeItem('refreshToken');
       setUser(null);
@@ -117,20 +105,10 @@ export const AuthProvider = ({ children }) => {
     const response = await api.post('/auth/verify-otp', { email, otp });
     
     if (response.success) {
-      // Store tokens after successful verification
       localStorage.setItem('accessToken', response.data.accessToken);
       localStorage.setItem('refreshToken', response.data.refreshToken);
-      
-      let userData = response.data.user;
-      
-      // Check if this is an admin
-      if (email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
-        userData = { ...userData, role: 'ADMIN' };
-        console.log('👑 Admin verification detected, setting role to ADMIN');
-      }
-      
-      setUser(userData);
-      setPendingVerificationEmail(null); // Clear pending verification
+      setUser(response.data.user);
+      setPendingVerificationEmail(null);
     }
     
     return response;
@@ -159,18 +137,10 @@ export const AuthProvider = ({ children }) => {
     setPendingVerificationEmail(null);
   };
 
-  // For OAuth login to manually set user data
   const setUserData = (userData) => {
     console.log('🔧 AuthContext - Setting user data manually:', userData);
-    
-    // Check if this is an admin based on email
-    if (userData.email && userData.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
-      userData = { ...userData, role: 'ADMIN' };
-      console.log('👑 Admin OAuth login detected, setting role to ADMIN');
-    }
-    
     setUser(userData);
-    setPendingVerificationEmail(null); // Clear any pending verification
+    setPendingVerificationEmail(null);
   };
 
   // Helper function to check if user has specific role
@@ -185,10 +155,10 @@ export const AuthProvider = ({ children }) => {
 
   // Get user's dashboard route based on role
   const getUserDashboardRoute = () => {
-    if (!user?.role) return '/role-selection';
+    if (!user?.role) return '/dashboard'; // Default for END_USER
     
     const dashboardRoutes = {
-      'CUSTOMER': '/dashboard',
+      'END_USER': '/dashboard',    // FIXED: END_USER = Customer
       'MECHANIC': '/worker-dashboard',
       'ADMIN': '/admin-dashboard'
     };
@@ -196,7 +166,21 @@ export const AuthProvider = ({ children }) => {
     return dashboardRoutes[user.role] || '/dashboard';
   };
 
-  // The value object that will be provided to all consuming components
+  // Check if user is a customer (END_USER)
+  const isCustomer = () => {
+    return user?.role === 'END_USER';
+  };
+
+  // Check if user is a mechanic
+  const isMechanic = () => {
+    return user?.role === 'MECHANIC';
+  };
+
+  // Check if user is an admin
+  const isAdmin = () => {
+    return user?.role === 'ADMIN';
+  };
+
   const value = {
     user,
     loading,
@@ -212,12 +196,13 @@ export const AuthProvider = ({ children }) => {
     setPendingVerificationEmail,
     clearPendingVerification,
     setUserData,
-    // New role-based helper functions
+    // Role-based helper functions
     hasRole,
     hasAnyRole,
     getUserDashboardRoute,
-    // Constants
-    ADMIN_EMAIL
+    isCustomer,
+    isMechanic,
+    isAdmin,
   };
 
   return (

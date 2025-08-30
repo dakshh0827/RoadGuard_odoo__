@@ -1,4 +1,4 @@
-// src/services/api.js - UPDATED WITH ROLE-BASED ACCESS CONTROL
+// src/services/api.js - UPDATED WITH MECHANIC METHODS
 import { 
   API_BASE_URL, 
   SERVICE_REQUEST_ENDPOINTS, 
@@ -150,7 +150,6 @@ class ApiService {
 
   // AUTH-RELATED METHODS
   
-  // Role selection method
   async selectRole(role) {
     try {
       const response = await this.post('/auth/select-role', { role });
@@ -166,7 +165,6 @@ class ApiService {
     }
   }
 
-  // Get user profile with role information
   async getUserProfile() {
     try {
       const response = await this.get('/auth/profile');
@@ -177,7 +175,6 @@ class ApiService {
     }
   }
 
-  // Update user role (admin only)
   async updateUserRole(userId, role) {
     try {
       const response = await this.patch(`/admin/users/${userId}/role`, { role });
@@ -267,20 +264,45 @@ class ApiService {
 
   // MECHANIC-SPECIFIC METHODS
   
-  async getMechanicServiceRequests(params = {}) {
-    const { page = 1, limit = 10, status, location } = params;
+  async getAvailableServiceRequests(params = {}) {
+    const { page = 1, limit = 10, status = 'PENDING', serviceType, vehicleType, maxDistance = 50 } = params;
     const queryParams = new URLSearchParams({
       page: page.toString(),
       limit: limit.toString(),
-      ...(status && { status }),
-      ...(location && { location: JSON.stringify(location) })
+      status,
+      maxDistance: maxDistance.toString(),
+      ...(serviceType && { serviceType }),
+      ...(vehicleType && { vehicleType })
+    });
+
+    return this.get(`/mechanic/service-requests/available?${queryParams}`);
+  }
+
+  async getMechanicServiceRequests(params = {}) {
+    const { page = 1, limit = 10, status } = params;
+    const queryParams = new URLSearchParams({
+      page: page.toString(),
+      limit: limit.toString(),
+      ...(status && { status })
     });
 
     return this.get(`/mechanic/service-requests?${queryParams}`);
   }
 
+  async getMechanicServiceRequestDetails(id) {
+    return this.get(`/mechanic/service-requests/${id}`);
+  }
+
   async acceptServiceRequest(requestId) {
     return this.post(`/mechanic/service-requests/${requestId}/accept`, {});
+  }
+
+  async updateMechanicServiceRequestStatus(id, statusData) {
+    return this.patch(`/mechanic/service-requests/${id}/status`, statusData);
+  }
+
+  async updateMechanicLocation(locationData) {
+    return this.patch('/mechanic/location', locationData);
   }
 
   async updateMechanicAvailability(availability) {
@@ -398,10 +420,15 @@ class ApiService {
       const payload = JSON.parse(atob(token.split('.')[1]));
       return payload.role || null;
     } catch (error) {
-      console.error('Error decoding token:', error);
+      console.error('Error decoding token:', error);  
       return null;
     }
   }
 }
 
-export const api = new ApiService();
+// Create a singleton instance
+const apiService = new ApiService();
+
+// Export both default and named exports
+export default apiService;
+export { apiService as api };

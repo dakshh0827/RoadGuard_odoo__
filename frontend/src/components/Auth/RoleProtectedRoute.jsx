@@ -1,4 +1,4 @@
-// src/components/Auth/RoleProtectedRoute.jsx
+// src/components/Auth/RoleProtectedRoute.jsx - FIXED VERSION
 import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -25,24 +25,22 @@ const RoleProtectedRoute = ({ children, allowedRoles = [], requireVerification =
     return <Navigate to="/verify-email" replace />;
   }
 
-  // If user doesn't have a role assigned yet
-  if (!user.role) {
-    return <Navigate to="/role-selection" replace />;
+  // FIXED: Handle role checking - if no roles specified, allow all authenticated users
+  if (allowedRoles.length > 0) {
+    // Check if user's role is in allowed roles
+    if (!allowedRoles.includes(user.role)) {
+      // FIXED: Redirect to their appropriate dashboard based on actual role
+      const dashboardRoutes = {
+        'END_USER': '/dashboard',      // FIXED: Use END_USER instead of CUSTOMER
+        'MECHANIC': '/worker-dashboard',
+        'ADMIN': '/admin-dashboard'
+      };
+      
+      return <Navigate to={dashboardRoutes[user.role] || '/dashboard'} replace />;
+    }
   }
 
-  // If user's role is not in allowed roles for this route
-  if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
-    // Redirect to their appropriate dashboard based on role
-    const dashboardRoutes = {
-      'CUSTOMER': '/dashboard',
-      'MECHANIC': '/worker-dashboard',
-      'ADMIN': '/admin-dashboard'
-    };
-    
-    return <Navigate to={dashboardRoutes[user.role] || '/dashboard'} replace />;
-  }
-
-  // User is authenticated, verified, has role, and has permission
+  // User is authenticated, verified, and has permission
   return children;
 };
 

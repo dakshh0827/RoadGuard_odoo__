@@ -1,4 +1,4 @@
-// prisma/schema.prisma
+// prisma/schema.prisma - FIXED VERSION
 generator client {
   provider = "prisma-client-js"
 }
@@ -49,12 +49,23 @@ enum VehicleType {
 model User {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   email     String   @unique
-  phone     String?  @unique
+  phone     String?  // REMOVED @unique - This was causing the MongoDB error
   password  String
   firstName String
   lastName  String
   role      UserRole @default(END_USER)
   isActive  Boolean  @default(true)
+  isVerified Boolean @default(false)
+  
+  // Optional fields for auth
+  avatar               String?
+  provider             String?  @default("local")
+  providerId           String?
+  verificationToken    String?
+  verificationExpires  DateTime?
+  resetPasswordToken   String?
+  resetPasswordExpires DateTime?
+  refreshToken         String?
   
   // Location (for mechanics to show availability area)
   latitude  Float?
@@ -66,10 +77,25 @@ model User {
   updatedAt DateTime @updatedAt
   
   // Relations
-  serviceRequests ServiceRequest[] @relation("RequestedBy")
+  serviceRequests  ServiceRequest[] @relation("RequestedBy")
   acceptedRequests ServiceRequest[] @relation("AcceptedBy")
   
   @@map("users")
+}
+
+// ADDED - Missing OTPCode model that your auth controller needs
+model OTPCode {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  email     String
+  code      String
+  type      String   // 'verification' or 'password_reset'
+  verified  Boolean  @default(false)
+  attempts  Int      @default(0)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("otp_codes")
 }
 
 model ServiceRequest {

@@ -1,4 +1,4 @@
-// src/pages/VerifyEmail.jsx - Updated with Role-Based Routing
+// src/pages/VerifyEmail.jsx - FIXED VERSION (redirects to role selection)
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, Navigate, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout/Layout';
@@ -9,20 +9,41 @@ import { useAuth } from '../context/AuthContext';
 const VerifyEmail = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { user, loading, pendingVerificationEmail, clearPendingVerification, getUserDashboardRoute, ADMIN_EMAIL } = useAuth();
-  const [email, setEmail] = useState('');
+  const { user, loading, pendingVerificationEmail, clearPendingVerification, getUserDashboardRoute } = useAuth();
+  const [email, setEmail] = useState(''); // Initialize as empty string
   const [showOTPForm, setShowOTPForm] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [resendMessage, setResendMessage] = useState('');
   const [error, setError] = useState('');
 
+  // FIXED: Get admin email safely
+  const ADMIN_EMAIL = 'daksh.thakran05@gmail.com';
+  const API_URL = 'http://localhost:5001/api';
+
   console.log('🔥 VerifyEmail - RENDER START');
   console.log('🔥 Current state:', { email, showOTPForm, successMessage, resendMessage, error });
   console.log('🔥 Auth context:', { user, loading, pendingVerificationEmail });
 
+  // Helper function to determine redirect path after verification
+  const getRedirectPath = (userRole, userEmail) => {
+    // Admin users go to admin dashboard
+    if (userEmail && ADMIN_EMAIL && userEmail.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
+      return '/admin-dashboard';
+    }
+    
+    // Users with specific roles (MECHANIC) go to their dashboard
+    if (userRole && userRole !== 'END_USER') {
+      return getUserDashboardRoute();
+    }
+    
+    // FIXED: Non-admin END_USER (customers) go to role selection
+    return '/select-role';
+  };
+
   useEffect(() => {
     console.log('🚀 VerifyEmail - useEffect triggered');
     
+    // FIXED: Add safety checks for all email sources
     const emailParam = searchParams.get('email');
     const tokenParam = searchParams.get('token');
     
@@ -34,26 +55,25 @@ const VerifyEmail = () => {
       loading
     });
     
-    // Don't process if still loading
     if (loading) {
       console.log('⏳ Still loading, exiting useEffect');
       return;
     }
     
-    // Priority order for determining email
+    // FIXED: Priority order for determining email with safety checks
     let emailToUse = '';
     
-    if (emailParam && emailParam.trim()) {
+    if (emailParam && typeof emailParam === 'string' && emailParam.trim()) {
       emailToUse = emailParam.trim();
       console.log('✅ Using email from URL params:', emailToUse);
-    } else if (pendingVerificationEmail && pendingVerificationEmail.trim()) {
+    } else if (pendingVerificationEmail && typeof pendingVerificationEmail === 'string' && pendingVerificationEmail.trim()) {
       emailToUse = pendingVerificationEmail.trim();
       console.log('✅ Using pendingVerificationEmail:', emailToUse);
-    } else if (user?.email && !user.isVerified && !user.emailVerified) {
+    } else if (user?.email && typeof user.email === 'string' && !user.isVerified && !user.emailVerified) {
       emailToUse = user.email.trim();
       console.log('✅ Using user email:', emailToUse);
     } else {
-      console.log('❌ No email found in any source');
+      console.log('❌ No valid email found in any source');
     }
     
     console.log('🎯 Final email determined:', emailToUse);
@@ -76,7 +96,7 @@ const VerifyEmail = () => {
 
   const handleTokenVerification = async (token) => {
     try {
-      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/auth/verify-email?token=${token}`, {
+      const response = await fetch(`${API_URL}/auth/verify-email?token=${token}`, {
         method: 'GET',
         credentials: 'include',
       });
@@ -86,18 +106,12 @@ const VerifyEmail = () => {
       if (data.success) {
         setSuccessMessage('Email verified successfully! Redirecting...');
         
-        // Determine redirect based on role/admin status
-        const redirectDelay = 2000;
-        
         setTimeout(() => {
-          if (email && email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
-            navigate('/admin-dashboard');
-          } else if (user?.role) {
-            navigate(getUserDashboardRoute());
-          } else {
-            navigate('/role-selection');
-          }
-        }, redirectDelay);
+          // FIXED: Use helper function to determine redirect path
+          const redirectPath = getRedirectPath(data.data?.user?.role, email);
+          console.log('🔄 Redirecting to:', redirectPath);
+          navigate(redirectPath);
+        }, 2000);
       } else {
         setError(data.message || 'Invalid verification token');
       }
@@ -106,24 +120,19 @@ const VerifyEmail = () => {
     }
   };
 
-  const handleOTPSuccess = () => {
-    console.log('✅ OTP verification successful');
+  const handleOTPSuccess = (verificationResponse) => {
+    console.log('✅ OTP verification successful', verificationResponse);
     setSuccessMessage('Email verified successfully! Redirecting...');
     setResendMessage('');
     clearPendingVerification();
     
-    // Determine where to redirect after successful verification
     setTimeout(() => {
-      if (email && email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
-        console.log('👑 Admin verification successful, redirecting to admin dashboard');
-        navigate('/admin-dashboard');
-      } else if (user?.role) {
-        console.log('🎯 User has role, redirecting to their dashboard');
-        navigate(getUserDashboardRoute());
-      } else {
-        console.log('🔄 User needs to select role, redirecting to role selection');
-        navigate('/role-selection');
-      }
+      // FIXED: Use helper function to determine redirect path
+      const userRole = verificationResponse?.data?.user?.role || 'END_USER';
+      const redirectPath = getRedirectPath(userRole, email);
+      
+      console.log('🔄 Redirecting to:', redirectPath, 'for role:', userRole);
+      navigate(redirectPath);
     }, 2000);
   };
 
@@ -132,13 +141,11 @@ const VerifyEmail = () => {
     setResendMessage('Verification code sent successfully!');
     setError('');
     
-    // Clear the resend message after 3 seconds
     setTimeout(() => {
       setResendMessage('');
     }, 3000);
   };
 
-  // Loading state
   if (loading) {
     console.log('⏳ Rendering loading spinner');
     return (
@@ -150,20 +157,15 @@ const VerifyEmail = () => {
     );
   }
 
-  // If user is already verified, redirect based on role
+  // FIXED: Safe user verification status check
   if (user?.isVerified || user?.emailVerified) {
     console.log('✅ User already verified, determining redirect...');
     
-    if (user.email && user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
-      return <Navigate to="/admin-dashboard" replace />;
-    } else if (user.role) {
-      return <Navigate to={getUserDashboardRoute()} replace />;
-    } else {
-      return <Navigate to="/role-selection" replace />;
-    }
+    // FIXED: Use helper function for consistent redirect logic
+    const redirectPath = getRedirectPath(user.role, user.email);
+    return <Navigate to={redirectPath} replace />;
   }
 
-  // Only redirect to login if we're not loading and have no way to get email
   if (!loading && !email && !pendingVerificationEmail && !searchParams.get('email') && !user) {
     console.log('❌ No email sources available, redirecting to login');
     return <Navigate to="/login" replace />;
@@ -183,7 +185,6 @@ const VerifyEmail = () => {
               </p>
             </div>
 
-            {/* Success Message (hides OTP form) */}
             {successMessage && (
               <div className="mb-6 text-center">
                 <div className="text-green-600 bg-green-50 p-4 rounded-lg border border-green-200">
@@ -192,7 +193,6 @@ const VerifyEmail = () => {
               </div>
             )}
 
-            {/* Resend Message (doesn't hide OTP form) */}
             {resendMessage && !successMessage && (
               <div className="mb-4 text-center">
                 <div className="text-blue-600 bg-blue-50 p-3 rounded-lg border border-blue-200">
@@ -216,19 +216,13 @@ const VerifyEmail = () => {
               </div>
             )}
             
-            {/* Only render OTPForm if we have an email and no success message */}
+            {/* Only render OTPForm if we have a valid email */}
             {email && showOTPForm && !successMessage && (
-              <>
-                <div className="bg-blue-100 p-2 text-xs mb-4 rounded">
-                  <p>About to render OTPForm with email: "{email}"</p>
-                </div>
-                
-                <OTPForm
-                  email={email}
-                  onSuccess={handleOTPSuccess}
-                  onResend={handleResendSuccess}
-                />
-              </>
+              <OTPForm
+                email={email}
+                onSuccess={handleOTPSuccess}
+                onResend={handleResendSuccess}
+              />
             )}
 
             {/* Show manual email entry if no email found */}
@@ -248,14 +242,14 @@ const VerifyEmail = () => {
                   />
                   <Button
                     onClick={() => {
-                      if (email.trim()) {
+                      if (email && typeof email === 'string' && email.trim()) {
                         setShowOTPForm(true);
                       } else {
                         setError('Please enter a valid email address');
                       }
                     }}
                     className="w-full"
-                    disabled={!email.trim()}
+                    disabled={!email || !email.trim()}
                   >
                     Verify Email
                   </Button>

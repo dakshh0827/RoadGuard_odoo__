@@ -1,5 +1,5 @@
-// src/pages/RoleSelection.jsx
-import React, { useState } from 'react';
+// src/pages/RoleSelection.jsx - FIXED VERSION
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import Layout from '../components/Layout/Layout';
 import Button from '../components/UI/Button';
@@ -22,49 +22,16 @@ const RoleSelection = () => {
     return <Navigate to="/verify-email" replace />;
   }
 
-  // If user already has a role, redirect to appropriate dashboard
-  if (user.role) {
+  // If user already has a role (and it's not END_USER), redirect to appropriate dashboard
+  if (user.role && user.role !== 'END_USER') {
     const dashboardRoutes = {
-      'CUSTOMER': '/dashboard',
       'MECHANIC': '/worker-dashboard',
       'ADMIN': '/admin-dashboard'
     };
     return <Navigate to={dashboardRoutes[user.role] || '/dashboard'} replace />;
   }
 
-  const handleRoleSubmit = async () => {
-    if (!selectedRole) {
-      setError('Please select a role');
-      return;
-    }
-
-    setLoading(true);
-    setError('');
-
-    try {
-      const response = await api.post('/auth/select-role', { role: selectedRole });
-      
-      if (response.success) {
-        // Update user data with the selected role
-        const updatedUser = { ...user, role: selectedRole };
-        setUserData(updatedUser);
-        
-        // Navigate to appropriate dashboard based on role
-        if (selectedRole === 'CUSTOMER') {
-          navigate('/dashboard');
-        } else if (selectedRole === 'MECHANIC') {
-          navigate('/worker-dashboard');
-        }
-      } else {
-        setError(response.message || 'Failed to set role');
-      }
-    } catch (err) {
-      setError(err.message || 'Something went wrong. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Updated roles array
   const roles = [
     {
       id: 'CUSTOMER',
@@ -73,7 +40,7 @@ const RoleSelection = () => {
       icon: '🚗',
       features: [
         'Request emergency roadside assistance',
-        'Book repair appointments',
+        'Book repair appointments', 
         'Track service history',
         'Rate and review services'
       ]
@@ -92,6 +59,76 @@ const RoleSelection = () => {
     }
   ];
 
+  // FIXED: Updated handleRoleSubmit with proper navigation handling
+  const handleRoleSubmit = async () => {
+    if (!selectedRole) {
+      setError('Please select a role');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      console.log('🔄 Starting role selection for:', selectedRole);
+      
+      // Call the backend to set role and get tokens
+      const response = await api.post('/auth/select-role', { 
+        email: user.email,
+        role: selectedRole 
+      });
+      
+      console.log('📝 Role selection response:', response);
+
+      if (response.success) {
+        // Store the tokens from the response
+        if (response.data.accessToken) {
+          localStorage.setItem('accessToken', response.data.accessToken);
+          localStorage.setItem('refreshToken', response.data.refreshToken);
+        }
+        
+        // Update user data in context
+        setUserData(response.data.user);
+        
+        // FIXED: Use replace: true and ensure proper navigation
+        if (selectedRole === 'CUSTOMER') {
+          console.log('🏠 Navigating to customer dashboard');
+          navigate('/dashboard', { replace: true });
+        } else if (selectedRole === 'MECHANIC') {
+          console.log('🔧 Navigating to worker dashboard');
+          navigate('/worker-dashboard', { replace: true });
+        } else {
+          console.log('🔄 Fallback navigation to dashboard');
+          navigate('/dashboard', { replace: true });
+        }
+      } else {
+        setError(response.message || 'Failed to set role');
+      }
+    } catch (err) {
+      console.error('Role selection error:', err);
+      setError(err.message || 'Something went wrong. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // FIXED: Add useEffect to handle navigation after user data updates
+  // REMOVE this useEffect or make it less aggressive
+useEffect(() => {
+  // Only redirect if user has been updated AND we're not in the middle of role selection
+  if (user && user.role && user.role !== 'END_USER' && !loading) {
+    console.log('🎯 User role updated, navigating to appropriate dashboard');
+    
+    const dashboardRoutes = {
+      'MECHANIC': '/worker-dashboard',
+      'ADMIN': '/admin-dashboard'
+    };
+    
+    const targetRoute = dashboardRoutes[user.role] || '/dashboard';
+    navigate(targetRoute, { replace: true });
+  }
+}, [user?.role, navigate, loading]); // Add loading dependency
+
   return (
     <Layout showHeader={false}>
       <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
@@ -101,6 +138,12 @@ const RoleSelection = () => {
             <p className="text-gray-600 mb-8">
               Welcome {user?.firstName}! Please select how you'd like to use our platform.
             </p>
+            {/* Debug info */}
+            <div className="text-xs text-gray-400 mb-4">
+              <p>User Role: {user?.role || 'No role'}</p>
+              <p>Email: {user?.email}</p>
+              <p>Verified: {user?.isVerified ? 'Yes' : 'No'}</p>
+            </div>
           </div>
 
           {error && (

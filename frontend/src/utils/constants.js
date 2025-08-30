@@ -1,4 +1,4 @@
-// src/utils/constants.js - Updated with Role-Based Access Control
+// src/utils/constants.js - UPDATED WITH MECHANIC ENDPOINTS
 export const API_BASE_URL = 'http://localhost:5001/api';
 export const OAUTH_BASE_URL = 'http://localhost:5001/auth';
 
@@ -19,23 +19,20 @@ export const ROUTES = {
   ROOT: '/'
 };
 
-// Role-based route mappings
 export const DASHBOARD_ROUTES = {
-  CUSTOMER: '/dashboard',
+  END_USER: '/dashboard',
   MECHANIC: '/worker-dashboard',
   ADMIN: '/admin-dashboard'
 };
 
-// User roles
 export const USER_ROLES = {
-  CUSTOMER: 'CUSTOMER',
+  CUSTOMER: 'END_USER',
   MECHANIC: 'MECHANIC',
   ADMIN: 'ADMIN'
 };
 
-// Role permissions
 export const ROLE_PERMISSIONS = {
-  CUSTOMER: [
+  END_USER: [
     'CREATE_SERVICE_REQUEST',
     'VIEW_OWN_REQUESTS',
     'CANCEL_OWN_REQUESTS',
@@ -66,7 +63,7 @@ export const AUTH_ENDPOINTS = {
   FORGOT_PASSWORD: '/auth/forgot-password',
   RESET_PASSWORD: '/auth/reset-password',
   REFRESH_TOKEN: '/auth/refresh-token',
-  SELECT_ROLE: '/auth/select-role' // New endpoint for role selection
+  SELECT_ROLE: '/auth/select-role'
 };
 
 export const OAUTH_ENDPOINTS = {
@@ -74,7 +71,6 @@ export const OAUTH_ENDPOINTS = {
   GITHUB: '/oauth/github'
 };
 
-// Service Request Endpoints
 export const SERVICE_REQUEST_ENDPOINTS = {
   CREATE: '/service-requests',
   GET_USER_REQUESTS: '/service-requests',
@@ -83,7 +79,18 @@ export const SERVICE_REQUEST_ENDPOINTS = {
   CANCEL: '/service-requests'
 };
 
-// Service Type Mappings
+// NEW: Mechanic-specific endpoints
+export const MECHANIC_ENDPOINTS = {
+  AVAILABLE_REQUESTS: '/mechanic/service-requests/available',
+  MY_REQUESTS: '/mechanic/service-requests',
+  REQUEST_DETAILS: '/mechanic/service-requests',
+  ACCEPT_REQUEST: '/mechanic/service-requests',
+  UPDATE_STATUS: '/mechanic/service-requests',
+  UPDATE_LOCATION: '/mechanic/location',
+  UPDATE_AVAILABILITY: '/mechanic/availability',
+  PROFILE: '/mechanic/profile'
+};
+
 export const SERVICE_TYPE_MAPPING = {
   'instant_service': 'EMERGENCY_ASSISTANCE',
   'towing': 'TOWING',
@@ -96,7 +103,19 @@ export const SERVICE_TYPE_MAPPING = {
   'general_repair': 'GENERAL_REPAIR'
 };
 
-// Vehicle Type Mappings
+// Reverse mapping for display purposes
+export const SERVICE_TYPE_DISPLAY = {
+  'EMERGENCY_ASSISTANCE': 'Emergency Assistance',
+  'TOWING': 'Towing Service',
+  'BATTERY_JUMP': 'Battery Jump Start',
+  'TIRE_CHANGE': 'Tire Change',
+  'FUEL_DELIVERY': 'Fuel Delivery',
+  'ENGINE_REPAIR': 'Engine Repair',
+  'BRAKE_REPAIR': 'Brake Repair',
+  'ELECTRICAL_ISSUE': 'Electrical Issue',
+  'GENERAL_REPAIR': 'General Repair'
+};
+
 export const VEHICLE_TYPE_MAPPING = {
   'car': 'CAR',
   'motorcycle': 'MOTORCYCLE',
@@ -106,6 +125,61 @@ export const VEHICLE_TYPE_MAPPING = {
   'other': 'OTHER'
 };
 
+export const VEHICLE_TYPE_DISPLAY = {
+  'CAR': 'Car',
+  'MOTORCYCLE': 'Motorcycle',
+  'TRUCK': 'Truck',
+  'BUS': 'Bus',
+  'AUTO_RICKSHAW': 'Auto Rickshaw',
+  'OTHER': 'Other'
+};
+
+// Service request status with colors for UI
+export const SERVICE_STATUS = {
+  PENDING: {
+    label: 'Pending',
+    color: 'yellow',
+    bgColor: 'bg-yellow-100',
+    textColor: 'text-yellow-800',
+    description: 'Waiting for mechanic'
+  },
+  ACCEPTED: {
+    label: 'Accepted',
+    color: 'blue',
+    bgColor: 'bg-blue-100',
+    textColor: 'text-blue-800',
+    description: 'Mechanic assigned'
+  },
+  IN_PROGRESS: {
+    label: 'In Progress',
+    color: 'orange',
+    bgColor: 'bg-orange-100',
+    textColor: 'text-orange-800',
+    description: 'Work in progress'
+  },
+  COMPLETED: {
+    label: 'Completed',
+    color: 'green',
+    bgColor: 'bg-green-100',
+    textColor: 'text-green-800',
+    description: 'Service completed'
+  },
+  CANCELLED: {
+    label: 'Cancelled',
+    color: 'red',
+    bgColor: 'bg-red-100',
+    textColor: 'text-red-800',
+    description: 'Request cancelled'
+  },
+  REJECTED: {
+    label: 'Rejected',
+    color: 'gray',
+    bgColor: 'bg-gray-100',
+    textColor: 'text-gray-800',
+    description: 'Request rejected'
+  }
+};
+
 export const ERROR_MESSAGES = {
   REQUIRED_FIELD: (field) => `${field.charAt(0).toUpperCase() + field.slice(1)} is required`,
   INVALID_EMAIL: 'Invalid email format',
@@ -113,23 +187,25 @@ export const ERROR_MESSAGES = {
   INVALID_NAME: 'Name must be 2-50 characters, letters only',
   INVALID_OTP: 'Please enter a valid 6-digit code',
   GENERIC_ERROR: 'Something went wrong. Please try again.',
-  // Service Request specific errors
   LOCATION_REQUIRED: 'Location is required for service request',
   INVALID_COORDINATES: 'Invalid GPS coordinates provided',
   FILE_TOO_LARGE: 'Image file is too large (max 5MB)',
   INVALID_FILE_TYPE: 'Only image files are allowed',
-  // Role-related errors
   ROLE_REQUIRED: 'Please select a role',
   ROLE_ALREADY_SET: 'Role has already been assigned',
   UNAUTHORIZED_ROLE: 'You do not have permission to access this area',
-  INVALID_ROLE: 'Invalid role selected'
+  INVALID_ROLE: 'Invalid role selected',
+  LOCATION_NOT_SET: 'Please set your location to view nearby requests',
+  REQUEST_NOT_AVAILABLE: 'This service request is no longer available',
+  REQUEST_ALREADY_ASSIGNED: 'This request has been assigned to another mechanic'
 };
 
-// Success Messages
 export const SUCCESS_MESSAGES = {
   SERVICE_REQUEST_CREATED: 'Service request created successfully!',
   SERVICE_REQUEST_CANCELLED: 'Service request cancelled successfully!',
   SERVICE_REQUEST_UPDATED: 'Service request updated successfully!',
+  SERVICE_REQUEST_ACCEPTED: 'Service request accepted successfully!',
   ROLE_SELECTED: 'Role selected successfully!',
-  PROFILE_UPDATED: 'Profile updated successfully!'
+  PROFILE_UPDATED: 'Profile updated successfully!',
+  LOCATION_UPDATED: 'Location updated successfully!'
 };
