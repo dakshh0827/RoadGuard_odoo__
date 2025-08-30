@@ -1,0 +1,133 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("MONGODB_URI")
+}
+
+// Simplified Enums
+enum UserRole {
+  END_USER
+  MECHANIC  
+  ADMIN
+}
+
+enum ServiceRequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum ServiceType {
+  TOWING
+  BATTERY_JUMP
+  TIRE_CHANGE
+  FUEL_DELIVERY
+  ENGINE_REPAIR
+  BRAKE_REPAIR
+  ELECTRICAL_ISSUE
+  GENERAL_REPAIR
+  EMERGENCY_ASSISTANCE
+}
+
+enum VehicleType {
+  CAR
+  MOTORCYCLE
+  TRUCK
+  BUS
+  AUTO_RICKSHAW
+  OTHER
+}
+
+// Core Models
+model User {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  email     String   @unique
+  phone     String?  @unique
+  password  String
+  firstName String
+  lastName  String
+  role      UserRole @default(END_USER)
+  isActive  Boolean  @default(true)
+  
+  // Location (for mechanics to show availability area)
+  latitude  Float?
+  longitude Float?
+  address   String?
+  city      String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  serviceRequests ServiceRequest[] @relation("RequestedBy")
+  acceptedRequests ServiceRequest[] @relation("AcceptedBy")
+  
+  @@map("users")
+}
+
+model ServiceRequest {
+  id          String               @id @default(auto()) @map("_id") @db.ObjectId
+  requestId   String               @unique @default(cuid()) // Human-readable ID
+  
+  // End user who made the request
+  endUserId   String               @db.ObjectId
+  endUser     User                 @relation("RequestedBy", fields: [endUserId], references: [id])
+  
+  // Vehicle details
+  vehicleType   VehicleType
+  vehicleNumber String?
+  vehicleMake   String?
+  vehicleModel  String?
+  
+  // Service details
+  serviceType ServiceType
+  description String
+  images      String[]           // Problem photos
+  
+  // Location where service is needed
+  latitude    Float
+  longitude   Float
+  address     String
+  
+  // Mechanic assignment
+  mechanicId  String?            @db.ObjectId
+  mechanic    User?              @relation("AcceptedBy", fields: [mechanicId], references: [id])
+  
+  // Status and pricing
+  status      ServiceRequestStatus @default(PENDING)
+  cost        Float?
+  
+  // Timeline
+  requestedAt   DateTime         @default(now())
+  acceptedAt    DateTime?
+  completedAt   DateTime?
+  cancelledAt   DateTime?
+  
+  // Notes
+  customerNotes String?
+  mechanicNotes String?
+  adminNotes    String?          // For admin monitoring
+  
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  
+  @@map("service_requests")
+}
+
+// Optional: Simple logging for admin monitoring
+model ActivityLog {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  action    String   // "request_created", "request_accepted", "request_completed", etc.
+  userId    String   @db.ObjectId
+  details   Json?    // Flexible field for additional context
+  timestamp DateTime @default(now())
+  
+  @@map("activity_logs")
+}
