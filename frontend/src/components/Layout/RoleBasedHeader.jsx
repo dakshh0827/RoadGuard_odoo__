@@ -76,21 +76,21 @@ const RoleBasedHeader = () => {
           {/* Logo */}
           <div className="flex items-center">
             <Link to={user?.role ? navigationItems[0]?.path || '/dashboard' : '/dashboard'} className="text-xl font-bold text-gray-900">
-              AutoFix
+              RoadGuard
             </Link>
           </div>
 
           {/* Desktop Navigation */}
           <nav className="hidden md:flex space-x-8">
-            {navigationItems.map((item) => (
+            
               <Link
-                key={item.path}
-                to={item.path}
+                key={'/service-history'}
+                to={'/service-history'}
                 className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium transition-colors"
               >
-                {item.label}
+                {'Service History'}
               </Link>
-            ))}
+          
           </nav>
 
           {/* User Menu */}

@@ -1,4 +1,4 @@
-// src/App.jsx - FIXED VERSION
+// src/App.jsx - INTEGRATED VERSION
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
@@ -16,6 +16,7 @@ import NewRequestPage from './pages/NewRequestPage';
 import WorkerDashboard from './pages/WorkerDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import ServiceRequestHistory from './pages/ServiceRequestHistory';
+import Unauthorized from './pages/Unauthorized';
 
 // Components
 import ProtectedRoute from './components/Auth/ProtectedRoute';
@@ -56,37 +57,47 @@ function App() {
             {/* Email verification route - accessible for unverified users */}
             <Route path="/verify-email" element={<VerifyEmail />} />
             
+            {/* Unauthorized access page */}
+            <Route path="/unauthorized" element={<Unauthorized />} />
+            
             {/* Role selection route - accessible for verified users without roles */}
             <Route path="/select-role" element={<RoleSelection />} />
+            <Route path="/role-selection" element={<RoleSelection />} />
 
-            {/* FIXED: Customer Dashboard Routes - Use END_USER instead of CUSTOMER */}
+            {/* Customer/End User Dashboard Routes */}
             <Route path="/dashboard" element={
-              <RoleProtectedRoute allowedRoles={['END_USER']}>
+              <RoleProtectedRoute allowedRoles={['END_USER', 'CUSTOMER']}>
+                <Dashboard />
+              </RoleProtectedRoute>
+            } />
+            
+            <Route path="/customer-dashboard" element={
+              <RoleProtectedRoute allowedRoles={['END_USER', 'CUSTOMER']}>
                 <Dashboard />
               </RoleProtectedRoute>
             } />
             
             <Route path="/request-service" element={
-              <RoleProtectedRoute allowedRoles={['END_USER']}>
+              <RoleProtectedRoute allowedRoles={['END_USER', 'CUSTOMER']}>
                 <NewRequestPage />
               </RoleProtectedRoute>
             } />
             
             <Route path="/service-history" element={
-              <RoleProtectedRoute allowedRoles={['END_USER']}>
+              <RoleProtectedRoute allowedRoles={['END_USER', 'CUSTOMER']}>
                 <ServiceRequestHistory />
               </RoleProtectedRoute>
             } />
             
             <Route path="/workshop/:id" element={
-              <RoleProtectedRoute allowedRoles={['END_USER']}>
+              <RoleProtectedRoute allowedRoles={['END_USER', 'CUSTOMER']}>
                 <WorkshopDetailPage />
               </RoleProtectedRoute>
             } />
 
-            {/* Mechanic Dashboard Routes */}
+            {/* Mechanic/Worker Dashboard Routes */}
             <Route path="/worker-dashboard" element={
-              <RoleProtectedRoute allowedRoles={['MECHANIC']}>
+              <RoleProtectedRoute allowedRoles={['MECHANIC', 'WORKER']}>
                 <WorkerDashboard />
               </RoleProtectedRoute>
             } />

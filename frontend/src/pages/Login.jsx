@@ -1,4 +1,3 @@
-// src/pages/Login.jsx - Updated with Role-Based Routing
 import React, { useEffect } from 'react';
 import { Navigate, Link, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout/Layout';
@@ -11,63 +10,46 @@ const Login = () => {
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Enhanced debugging
-  console.log('🔍 Current URL:', window.location.href);
-  console.log('🔍 Search params:', Object.fromEntries(searchParams.entries()));
-  console.log('Login component - user:', user);
-  console.log('Login component - loading:', loading);
-  console.log('Login component - pendingVerificationEmail:', pendingVerificationEmail);
+  console.log('🔍 Login component - user:', user);
+  console.log('🔍 Login component - loading:', loading);
+  console.log('🔍 Login component - pendingVerificationEmail:', pendingVerificationEmail);
 
   useEffect(() => {
-    console.log('🔄 useEffect triggered');
-    
     const accessToken = searchParams.get('access_token');
     const refreshToken = searchParams.get('refresh_token');
     const userParam = searchParams.get('user');
 
-    console.log('🔍 OAuth params check:', {
-      hasAccessToken: !!accessToken,
-      hasRefreshToken: !!refreshToken,
-      hasUserParam: !!userParam,
-      accessToken: accessToken?.substring(0, 20) + '...'
-    });
-
     if (accessToken && refreshToken && userParam) {
-      console.log('✅ All OAuth params present, processing...');
+      console.log('✅ OAuth params present, processing...');
       
       try {
         // Store tokens
         localStorage.setItem('accessToken', accessToken);
         localStorage.setItem('refreshToken', refreshToken);
-        console.log('✅ Tokens stored in localStorage');
         
         // Parse user data
-        console.log('🔄 Raw user param:', userParam);
         const userData = JSON.parse(decodeURIComponent(userParam));
-        console.log('✅ Parsed user data:', userData);
+        console.log('✅ Parsed OAuth user data:', userData);
         
-        // Check if this is an admin user and set role accordingly
+        // Check if this is an admin user (OAuth admin login)
         if (userData.email && userData.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
           userData.role = 'ADMIN';
+          userData.isAdmin = true;
           console.log('👑 Admin OAuth login detected');
         }
         
-        // Set user data with a small delay to ensure context is ready
+        // Set user data
         setTimeout(() => {
-          console.log('🔧 Calling setUserData...');
           setUserData(userData);
-          console.log('✅ setUserData called');
         }, 100);
         
         // Clean URL
         setSearchParams({});
-        console.log('✅ URL params cleaned');
         
       } catch (error) {
         console.error('❌ Error processing OAuth callback:', error);
         setSearchParams({});
       }
-    } else {
-      console.log('ℹ️ No OAuth params detected in URL');
     }
   }, [searchParams, setSearchParams, setUserData, ADMIN_EMAIL]);
 
@@ -89,8 +71,8 @@ const Login = () => {
 
   // If user is authenticated and verified
   if (user && (user.emailVerified || user.isVerified)) {
-    // Check if user is admin
-    if (user.email && user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
+    // Check if user is admin - prioritize isAdmin flag first
+    if (user.isAdmin || (user.email && user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase())) {
       console.log('👑 Admin user detected, redirecting to admin dashboard');
       return <Navigate to="/admin-dashboard" replace />;
     }
@@ -106,8 +88,8 @@ const Login = () => {
     }
   }
 
-  // If user exists but is not verified
-  if (user && !user.emailVerified && !user.isVerified) {
+  // If user exists but is not verified (skip for admin)
+  if (user && !user.isAdmin && !user.emailVerified && !user.isVerified) {
     console.log('📧 Redirecting to verify-email');
     return <Navigate to="/verify-email" replace />;
   }

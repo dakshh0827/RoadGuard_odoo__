@@ -1,4 +1,4 @@
-// src/services/api.js - FULLY FIXED VERSION
+// src/services/apiService.js - ADMIN BYPASS VERSION
 import { 
   API_BASE_URL, 
   SERVICE_REQUEST_ENDPOINTS, 
@@ -7,14 +7,396 @@ import {
 
 class ApiService {
   constructor() {
-    this.baseURL = API_BASE_URL;
+    this.baseURL = API_BASE_URL || process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+  }
+
+  // ============== ADMIN MOCK DATA ==============
+  
+  // Mock admin dashboard stats
+  getMockDashboardStats() {
+    return {
+      success: true,
+      data: {
+        requests: {
+          total: 25,
+          pending: 3,
+          accepted: 5,
+          inProgress: 7,
+          completed: 8,
+          rejected: 1,
+          cancelled: 1
+        },
+        timeframes: {
+          today: 2,
+          thisWeek: 8,
+          thisMonth: 15
+        },
+        users: {
+          totalCustomers: 45,
+          totalMechanics: 12,
+          activeMechanics: 8
+        },
+        recentActivity: [
+          {
+            id: 1,
+            action: 'request_created',
+            actionDescription: 'Service request created',
+            userFullName: 'John Doe',
+            timeAgo: '2m ago',
+            createdAt: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
+            details: { requestId: 'REQ-001' }
+          },
+          {
+            id: 2,
+            action: 'request_accepted',
+            actionDescription: 'Request accepted by mechanic',
+            userFullName: 'Mike Smith',
+            timeAgo: '15m ago',
+            createdAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
+            details: { requestId: 'REQ-002' }
+          }
+        ]
+      }
+    };
+  }
+
+  // Mock service requests data
+  getMockServiceRequests(params = {}) {
+    const { page = 1, limit = 10, status, serviceType, search } = params;
+    
+    let mockRequests = [
+      {
+        id: '1',
+        requestId: 'REQ-001',
+        status: 'PENDING',
+        serviceType: 'ENGINE_REPAIR',
+        vehicleType: 'CAR',
+        address: '123 Main Street, Downtown',
+        cost: 1500,
+        createdAt: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
+        endUser: {
+          firstName: 'John',
+          lastName: 'Doe',
+          phone: '+91-9876543210',
+          email: 'john.doe@email.com'
+        },
+        mechanic: null
+      },
+      {
+        id: '2',
+        requestId: 'REQ-002',
+        status: 'ACCEPTED',
+        serviceType: 'TIRE_CHANGE',
+        vehicleType: 'CAR',
+        address: '456 Oak Avenue, Midtown',
+        cost: 800,
+        createdAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
+        endUser: {
+          firstName: 'Jane',
+          lastName: 'Smith',
+          phone: '+91-9876543211',
+          email: 'jane.smith@email.com'
+        },
+        mechanic: {
+          firstName: 'Mike',
+          lastName: 'Johnson',
+          phone: '+91-9876543212',
+          email: 'mike.johnson@email.com'
+        }
+      },
+      {
+        id: '3',
+        requestId: 'REQ-003',
+        status: 'IN_PROGRESS',
+        serviceType: 'BATTERY_JUMP',
+        vehicleType: 'CAR',
+        address: '789 Pine Road, Uptown',
+        cost: 500,
+        createdAt: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
+        endUser: {
+          firstName: 'Bob',
+          lastName: 'Wilson',
+          phone: '+91-9876543213',
+          email: 'bob.wilson@email.com'
+        },
+        mechanic: {
+          firstName: 'Sarah',
+          lastName: 'Davis',
+          phone: '+91-9876543214',
+          email: 'sarah.davis@email.com'
+        }
+      },
+      {
+        id: '4',
+        requestId: 'REQ-004',
+        status: 'COMPLETED',
+        serviceType: 'TOWING',
+        vehicleType: 'TRUCK',
+        address: '321 Elm Street, Suburb',
+        cost: 2000,
+        createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+        endUser: {
+          firstName: 'Alice',
+          lastName: 'Brown',
+          phone: '+91-9876543215',
+          email: 'alice.brown@email.com'
+        },
+        mechanic: {
+          firstName: 'Tom',
+          lastName: 'Anderson',
+          phone: '+91-9876543216',
+          email: 'tom.anderson@email.com'
+        }
+      },
+      {
+        id: '5',
+        requestId: 'REQ-005',
+        status: 'REJECTED',
+        serviceType: 'FUEL_DELIVERY',
+        vehicleType: 'MOTORCYCLE',
+        address: '654 Maple Drive, City Center',
+        cost: 300,
+        createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+        endUser: {
+          firstName: 'Charlie',
+          lastName: 'Taylor',
+          phone: '+91-9876543217',
+          email: 'charlie.taylor@email.com'
+        },
+        mechanic: null
+      }
+    ];
+
+    // Apply filters
+    if (status) {
+      mockRequests = mockRequests.filter(req => req.status === status);
+    }
+    if (serviceType) {
+      mockRequests = mockRequests.filter(req => req.serviceType === serviceType);
+    }
+    if (search) {
+      const searchLower = search.toLowerCase();
+      mockRequests = mockRequests.filter(req => 
+        req.requestId.toLowerCase().includes(searchLower) ||
+        req.endUser.firstName.toLowerCase().includes(searchLower) ||
+        req.endUser.lastName.toLowerCase().includes(searchLower) ||
+        req.address.toLowerCase().includes(searchLower)
+      );
+    }
+
+    // Apply pagination
+    const total = mockRequests.length;
+    const start = (page - 1) * limit;
+    const paginatedRequests = mockRequests.slice(start, start + limit);
+
+    return {
+      success: true,
+      data: {
+        serviceRequests: paginatedRequests,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total: total,
+          pages: Math.ceil(total / limit)
+        },
+        stats: this.getMockDashboardStats().data.requests,
+        filters: {
+          status: status || null,
+          serviceType: serviceType || null,
+          search: search || null
+        }
+      }
+    };
+  }
+
+  // Mock audit logs data
+  getMockAuditLogs(params = {}) {
+    const { page = 1, limit = 20 } = params;
+    
+    const mockLogs = [
+      {
+        id: 1,
+        action: 'request_created',
+        actionDescription: 'Service request created',
+        userFullName: 'John Doe',
+        timeAgo: '2m ago',
+        createdAt: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
+        details: {
+          requestId: 'REQ-001',
+          serviceType: 'ENGINE_REPAIR',
+          method: 'POST',
+          ip: '192.168.1.100'
+        },
+        user: {
+          firstName: 'John',
+          lastName: 'Doe',
+          role: 'END_USER'
+        }
+      },
+      {
+        id: 2,
+        action: 'request_accepted',
+        actionDescription: 'Request accepted by mechanic',
+        userFullName: 'Mike Johnson',
+        timeAgo: '15m ago',
+        createdAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
+        details: {
+          requestId: 'REQ-002',
+          method: 'PATCH',
+          ip: '192.168.1.101'
+        },
+        user: {
+          firstName: 'Mike',
+          lastName: 'Johnson',
+          role: 'MECHANIC'
+        }
+      },
+      {
+        id: 3,
+        action: 'login',
+        actionDescription: 'User logged in',
+        userFullName: 'Admin User',
+        timeAgo: '30m ago',
+        createdAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+        details: {
+          method: 'POST',
+          ip: '192.168.1.1'
+        },
+        user: {
+          firstName: 'Admin',
+          lastName: 'User',
+          role: 'ADMIN'
+        }
+      }
+    ];
+
+    // Apply pagination
+    const total = mockLogs.length;
+    const start = (page - 1) * limit;
+    const paginatedLogs = mockLogs.slice(start, start + limit);
+
+    return {
+      success: true,
+      data: {
+        activityLogs: paginatedLogs,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total: total,
+          pages: Math.ceil(total / limit)
+        }
+      }
+    };
+  }
+
+  // ============== CORE REQUEST HANDLING ==============
+
+  getHeaders(includeAuth = true) {
+    const token = localStorage.getItem('accessToken') || localStorage.getItem('token');
+    const headers = {};
+    
+    // Only set Content-Type for non-FormData requests
+    if (includeAuth && token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+    
+    return headers;
+  }
+
+  // Check if this is an admin bypass request
+  isAdminBypass() {
+    const token = localStorage.getItem('accessToken');
+    const isAdmin = localStorage.getItem('isAdmin');
+    return token === 'ADMIN_BYPASS_TOKEN' && isAdmin === 'true';
+  }
+
+  async handleResponse(response) {
+    console.log('API Response status:', response.status);
+    console.log('API Response headers:', response.headers.get('content-type'));
+    
+    // Handle different content types
+    let data;
+    const contentType = response.headers.get('content-type') || '';
+    
+    if (contentType.includes('application/json')) {
+      data = await response.json();
+    } else if (contentType.includes('blob') || contentType.includes('octet-stream')) {
+      // Handle file downloads
+      return await response.blob();
+    } else {
+      // Handle non-JSON responses (plain text, HTML, etc.)
+      const textResponse = await response.text();
+      console.log('Non-JSON response:', textResponse);
+      
+      // Create standardized response format
+      if (response.ok) {
+        data = { 
+          success: true, 
+          message: textResponse || 'Operation completed successfully',
+          data: textResponse 
+        };
+      } else {
+        data = { 
+          success: false, 
+          message: textResponse || `HTTP error! status: ${response.status}` 
+        };
+      }
+    }
+
+    console.log('API Response data:', data);
+
+    // Handle authentication errors
+    if (response.status === 401) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      window.location.href = '/login';
+      throw new Error('Authentication required');
+    }
+    
+    // Handle authorization errors
+    if (response.status === 403) {
+      // Special handling for email verification errors
+      if (data.message && data.message.includes('verify your email')) {
+        console.log('API - Detected email verification error');
+        return {
+          success: false,
+          requiresVerification: true,
+          message: data.message,
+          data: data
+        };
+      }
+      
+      // Handle role-related errors
+      if (data.message && data.message.includes('role')) {
+        console.log('API - Detected role-related error');
+        return {
+          success: false,
+          requiresRoleSelection: true,
+          message: data.message,
+          data: data
+        };
+      }
+      
+      throw new Error(data.message || 'Access denied');
+    }
+    
+    if (!response.ok) {
+      throw new Error(data.message || `HTTP error! status: ${response.status}`);
+    }
+    
+    return data;
   }
 
   async request(endpoint, options = {}) {
+    // Check if this is an admin bypass request
+    if (this.isAdminBypass()) {
+      console.log('🔒 Admin bypass detected for endpoint:', endpoint);
+      return this.handleAdminBypass(endpoint, options);
+    }
+
     const url = `${this.baseURL}${endpoint}`;
-    
-    // Get token from localStorage
-    const token = localStorage.getItem('accessToken');
+    const token = localStorage.getItem('accessToken') || localStorage.getItem('token');
     
     const config = {
       credentials: 'include',
@@ -30,37 +412,6 @@ class ApiService {
     try {
       const response = await fetch(url, config);
       
-      console.log('API Response status:', response.status);
-      console.log('API Response headers:', response.headers.get('content-type'));
-      
-      // FIXED: Check if response has JSON content before parsing
-      let data;
-      const contentType = response.headers.get('content-type') || '';
-      
-      if (contentType.includes('application/json')) {
-        data = await response.json();
-      } else {
-        // Handle non-JSON responses (plain text, HTML, etc.)
-        const textResponse = await response.text();
-        console.log('Non-JSON response:', textResponse);
-        
-        // Try to create a standardized response format
-        if (response.ok) {
-          data = { 
-            success: true, 
-            message: textResponse || 'Operation completed successfully',
-            data: textResponse 
-          };
-        } else {
-          data = { 
-            success: false, 
-            message: textResponse || `HTTP error! status: ${response.status}` 
-          };
-        }
-      }
-      
-      console.log('API Response data:', data);
-      
       // Handle token refresh if needed
       if (response.status === 401 && token) {
         const refreshResult = await this.refreshToken();
@@ -68,68 +419,76 @@ class ApiService {
           // Retry the original request with new token
           config.headers.Authorization = `Bearer ${localStorage.getItem('accessToken')}`;
           const retryResponse = await fetch(url, config);
-          
-          // Handle retry response the same way
-          const retryContentType = retryResponse.headers.get('content-type') || '';
-          let retryData;
-          
-          if (retryContentType.includes('application/json')) {
-            retryData = await retryResponse.json();
-          } else {
-            const retryText = await retryResponse.text();
-            retryData = retryResponse.ok 
-              ? { success: true, message: retryText, data: retryText }
-              : { success: false, message: retryText };
-          }
-          
-          if (!retryResponse.ok) {
-            throw new Error(retryData.message || `HTTP error! status: ${retryResponse.status}`);
-          }
-          return retryData;
+          return await this.handleResponse(retryResponse);
         } else {
           // Refresh failed, redirect to login
           localStorage.removeItem('accessToken');
           localStorage.removeItem('refreshToken');
+          localStorage.removeItem('token');
           window.location.href = '/login';
           throw new Error('Session expired. Please login again.');
         }
       }
-
-      // Special handling for email verification errors (403 status)
-      if (response.status === 403 && data.message && data.message.includes('verify your email')) {
-        console.log('API - Detected email verification error, returning special response');
-        return {
-          success: false,
-          requiresVerification: true,
-          message: data.message,
-          data: data
-        };
-      }
-
-      // Handle role-related errors
-      if (response.status === 403 && data.message && data.message.includes('role')) {
-        console.log('API - Detected role-related error');
-        return {
-          success: false,
-          requiresRoleSelection: true,
-          message: data.message,
-          data: data
-        };
-      }
-
-      if (!response.ok) {
-        console.log('API - Throwing error for status:', response.status);
-        throw new Error(data.message || `HTTP error! status: ${response.status}`);
-      }
-
-      return data;
+      
+      return await this.handleResponse(response);
     } catch (error) {
       console.error('API request failed:', error);
       throw error;
     }
   }
 
+  // Handle admin bypass requests with mock data
+  async handleAdminBypass(endpoint, options = {}) {
+    console.log('🔒 Handling admin bypass for:', endpoint, options);
+    
+    // Simulate API delay
+    await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 700));
+
+    // Route to appropriate mock data
+    if (endpoint.includes('/admin/dashboard/stats')) {
+      return this.getMockDashboardStats();
+    }
+    
+    if (endpoint.includes('/admin/service-requests') && !endpoint.includes('/audit-logs')) {
+      // Extract query parameters
+      const urlParts = endpoint.split('?');
+      const params = {};
+      if (urlParts[1]) {
+        const searchParams = new URLSearchParams(urlParts[1]);
+        for (const [key, value] of searchParams) {
+          params[key] = value;
+        }
+      }
+      return this.getMockServiceRequests(params);
+    }
+    
+    if (endpoint.includes('/admin/audit-logs')) {
+      // Extract query parameters
+      const urlParts = endpoint.split('?');
+      const params = {};
+      if (urlParts[1]) {
+        const searchParams = new URLSearchParams(urlParts[1]);
+        for (const [key, value] of searchParams) {
+          params[key] = value;
+        }
+      }
+      return this.getMockAuditLogs(params);
+    }
+
+    // Default response for unhandled admin endpoints
+    return {
+      success: true,
+      message: 'Admin bypass - endpoint not implemented',
+      data: {}
+    };
+  }
+
   async refreshToken() {
+    // Skip refresh for admin bypass
+    if (this.isAdminBypass()) {
+      return true;
+    }
+
     try {
       const refreshToken = localStorage.getItem('refreshToken');
       if (!refreshToken) return false;
@@ -143,16 +502,7 @@ class ApiService {
         credentials: 'include',
       });
 
-      // FIXED: Handle refresh token response properly
-      const contentType = response.headers.get('content-type') || '';
-      let data;
-      
-      if (contentType.includes('application/json')) {
-        data = await response.json();
-      } else {
-        const text = await response.text();
-        data = { success: false, message: text };
-      }
+      const data = await this.handleResponse(response);
       
       if (response.ok && data.success) {
         localStorage.setItem('accessToken', data.data.accessToken);
@@ -167,6 +517,8 @@ class ApiService {
     }
   }
 
+  // ============== HTTP METHODS ==============
+
   async get(endpoint) {
     return this.request(endpoint, { method: 'GET' });
   }
@@ -174,21 +526,21 @@ class ApiService {
   async post(endpoint, data) {
     return this.request(endpoint, {
       method: 'POST',
-      body: JSON.stringify(data),
+      body: data instanceof FormData ? data : JSON.stringify(data),
     });
   }
 
   async put(endpoint, data) {
     return this.request(endpoint, {
       method: 'PUT',
-      body: JSON.stringify(data),
+      body: data instanceof FormData ? data : JSON.stringify(data),
     });
   }
 
   async patch(endpoint, data) {
     return this.request(endpoint, {
       method: 'PATCH',
-      body: JSON.stringify(data),
+      body: data instanceof FormData ? data : JSON.stringify(data),
     });
   }
 
@@ -196,8 +548,93 @@ class ApiService {
     return this.request(endpoint, { method: 'DELETE' });
   }
 
-  // AUTH-RELATED METHODS
-  
+  // ============== ADMIN METHODS ==============
+
+  // Dashboard and Analytics
+  async getDashboardStats() {
+    try {
+      return await this.get('/admin/dashboard/stats');
+    } catch (error) {
+      console.error('Error fetching dashboard stats:', error);
+      throw error;
+    }
+  }
+
+  // Service Request Management (Admin View)
+  async getAllServiceRequests(params = {}) {
+    const { page = 1, limit = 10, status, serviceType, vehicleType, search, sortBy, sortOrder, mechanic, customer } = params;
+    const queryParams = new URLSearchParams();
+    
+    // Add pagination
+    queryParams.append('page', page.toString());
+    queryParams.append('limit', limit.toString());
+    
+    // Add filters
+    if (status) queryParams.append('status', status);
+    if (serviceType) queryParams.append('serviceType', serviceType);
+    if (vehicleType) queryParams.append('vehicleType', vehicleType);
+    if (search) queryParams.append('search', search);
+    if (sortBy) queryParams.append('sortBy', sortBy);
+    if (sortOrder) queryParams.append('sortOrder', sortOrder);
+    if (mechanic) queryParams.append('mechanic', mechanic);
+    if (customer) queryParams.append('customer', customer);
+
+    try {
+      return await this.get(`/admin/service-requests?${queryParams}`);
+    } catch (error) {
+      console.error('Error fetching service requests:', error);
+      throw error;
+    }
+  }
+
+  async getServiceRequestDetails(requestId) {
+    try {
+      return await this.get(`/admin/service-requests/${requestId}`);
+    } catch (error) {
+      console.error('Error fetching service request details:', error);
+      throw error;
+    }
+  }
+
+  // Audit Logs
+  async getAuditLogs(params = {}) {
+    try {
+      const queryParams = new URLSearchParams();
+      
+      // Add pagination
+      queryParams.append('page', (params.page || 1).toString());
+      queryParams.append('limit', (params.limit || 20).toString());
+      
+      // Add filters
+      if (params.requestId) queryParams.append('requestId', params.requestId);
+      if (params.userId) queryParams.append('userId', params.userId);
+      if (params.action) queryParams.append('action', params.action);
+      if (params.dateFrom) queryParams.append('dateFrom', params.dateFrom);
+      if (params.dateTo) queryParams.append('dateTo', params.dateTo);
+      if (params.sortOrder) queryParams.append('sortOrder', params.sortOrder);
+
+      return await this.get(`/admin/audit-logs?${queryParams}`);
+    } catch (error) {
+      console.error('Error fetching audit logs:', error);
+      throw error;
+    }
+  }
+
+  async getServiceRequestAuditLogs(requestId, params = {}) {
+    try {
+      const queryParams = new URLSearchParams();
+      queryParams.append('page', (params.page || 1).toString());
+      queryParams.append('limit', (params.limit || 20).toString());
+
+      return await this.get(`/admin/service-requests/${requestId}/audit-logs?${queryParams}`);
+    } catch (error) {
+      console.error('Error fetching service request audit logs:', error);
+      throw error;
+    }
+  }
+
+  // ============== AUTHENTICATION METHODS ==============
+
   async selectRole(role) {
     try {
       const response = await this.post('/auth/select-role', { role });
@@ -215,31 +652,19 @@ class ApiService {
 
   async getUserProfile() {
     try {
-      const response = await this.get('/auth/profile');
-      return response;
+      return await this.get('/auth/profile');
     } catch (error) {
       console.error('Error fetching user profile:', error);
       throw error;
     }
   }
 
-  async updateUserRole(userId, role) {
-    try {
-      const response = await this.patch(`/admin/users/${userId}/role`, { role });
-      return response;
-    } catch (error) {
-      console.error('Error updating user role:', error);
-      throw error;
-    }
-  }
+  // ============== SERVICE REQUEST METHODS (Customer) ==============
 
-  // SERVICE REQUEST METHODS (Customer)
-  
   async createServiceRequest(formData) {
     try {
       // Validate required fields
       this.validateServiceRequestData(formData);
-
       const formDataToSend = new FormData();
       
       // Append form fields
@@ -266,28 +691,16 @@ class ApiService {
         formDataToSend.append('customerNotes', formData.customerNotes);
       }
       
-      // Append images if present
+      // Handle image uploads
       if (formData.image) {
-        // Validate file size (5MB limit)
-        if (formData.image.size > 5 * 1024 * 1024) {
-          throw new Error(ERROR_MESSAGES.FILE_TOO_LARGE || 'File too large');
-        }
-        
-        // Validate file type
-        const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
-        if (!allowedTypes.includes(formData.image.type)) {
-          throw new Error(ERROR_MESSAGES.INVALID_FILE_TYPE || 'Invalid file type');
-        }
-        
+        this.validateImageFile(formData.image);
         formDataToSend.append('images', formData.image);
       }
 
       // Handle multiple images
       if (formData.images && Array.isArray(formData.images)) {
         formData.images.forEach((image, index) => {
-          if (image.size > 5 * 1024 * 1024) {
-            throw new Error(`Image ${index + 1}: File too large`);
-          }
+          this.validateImageFile(image, index + 1);
           formDataToSend.append('images', image);
         });
       }
@@ -296,7 +709,6 @@ class ApiService {
         method: 'POST',
         body: formDataToSend
       });
-
     } catch (error) {
       console.error('Error creating service request:', error);
       throw error;
@@ -310,7 +722,6 @@ class ApiService {
       limit: limit.toString(),
       ...(status && { status })
     });
-
     return this.get(`/service-requests?${queryParams}`);
   }
 
@@ -319,22 +730,15 @@ class ApiService {
   }
 
   async updateServiceRequestStatus(id, statusData) {
-    return this.request(`/service-requests/${id}/status`, {
-      method: 'PATCH',
-      body: JSON.stringify(statusData)
-    });
+    return this.patch(`/service-requests/${id}/status`, statusData);
   }
 
-  // FIXED: Cancel service request method
   async cancelServiceRequest(id, data = {}) {
-    return this.request(`/service-requests/${id}/cancel`, {
-      method: 'PATCH',
-      body: JSON.stringify(data)
-    });
+    return this.patch(`/service-requests/${id}/cancel`, data);
   }
 
-  // MECHANIC-SPECIFIC METHODS
-  
+  // ============== MECHANIC METHODS ==============
+
   async getAvailableServiceRequests(params = {}) {
     const { page = 1, limit = 20, serviceType, vehicleType, maxDistance = 50 } = params;
     const queryParams = new URLSearchParams({
@@ -344,7 +748,6 @@ class ApiService {
       ...(serviceType && { serviceType }),
       ...(vehicleType && { vehicleType })
     });
-
     return this.get(`/mechanic/service-requests/available?${queryParams}`);
   }
 
@@ -358,7 +761,6 @@ class ApiService {
       ...(vehicleType && { vehicleType }),
       ...(maxDistance && { maxDistance: maxDistance.toString() })
     });
-
     return this.get(`/mechanic/service-requests?${queryParams}`);
   }
 
@@ -370,7 +772,6 @@ class ApiService {
     return this.post(`/mechanic/service-requests/${requestId}/accept`, {});
   }
 
-  // FIXED: Reject service request method with proper data handling
   async rejectServiceRequest(requestId, data = {}) {
     return this.post(`/mechanic/service-requests/${requestId}/reject`, data);
   }
@@ -395,63 +796,20 @@ class ApiService {
     return this.put('/mechanic/profile', profileData);
   }
 
-  // ADMIN-SPECIFIC METHODS
-  
-  async getAllUsers(params = {}) {
-    const { page = 1, limit = 20, role, search } = params;
-    const queryParams = new URLSearchParams({
-      page: page.toString(),
-      limit: limit.toString(),
-      ...(role && { role }),
-      ...(search && { search })
-    });
+  // ============== UTILITY METHODS ==============
 
-    return this.get(`/admin/users?${queryParams}`);
-  }
-
-  async getAllServiceRequests(params = {}) {
-    const { page = 1, limit = 20, status, mechanic, customer } = params;
-    const queryParams = new URLSearchParams({
-      page: page.toString(),
-      limit: limit.toString(),
-      ...(status && { status }),
-      ...(mechanic && { mechanic }),
-      ...(customer && { customer })
-    });
-
-    return this.get(`/admin/service-requests?${queryParams}`);
-  }
-
-  async getSystemAnalytics() {
-    return this.get('/admin/analytics');
-  }
-
-  async updateUserStatus(userId, status) {
-    return this.patch(`/admin/users/${userId}/status`, { status });
-  }
-
-  async deleteUser(userId) {
-    return this.delete(`/admin/users/${userId}`);
-  }
-
-  // UTILITY METHODS
-
-  // Helper method to validate service request data
   validateServiceRequestData(formData) {
     const errors = [];
-
+    
     if (!formData.name?.trim()) {
       errors.push('Name is required');
     }
-
     if (!formData.description?.trim()) {
       errors.push('Description is required');
     }
-
     if (!formData.serviceType) {
       errors.push('Service type is required');
     }
-
     if (!formData.location) {
       errors.push('Location is required');
     } else {
@@ -468,35 +826,47 @@ class ApiService {
         errors.push('Invalid coordinates range');
       }
     }
-
+    
     if (errors.length > 0) {
       throw new Error(errors.join(', '));
     }
   }
 
-  // Helper method to check if user has required role for API call
+  validateImageFile(image, index = null) {
+    const prefix = index ? `Image ${index}: ` : '';
+    
+    // Validate file size (5MB limit)
+    if (image.size > 5 * 1024 * 1024) {
+      throw new Error(`${prefix}${ERROR_MESSAGES.FILE_TOO_LARGE || 'File too large'}`);
+    }
+    
+    // Validate file type
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (!allowedTypes.includes(image.type)) {
+      throw new Error(`${prefix}${ERROR_MESSAGES.INVALID_FILE_TYPE || 'Invalid file type'}`);
+    }
+  }
+
   validateUserRole(requiredRoles = []) {
     const userRole = this.getUserRoleFromToken();
     
     if (!userRole) {
       throw new Error('User role not found. Please log in again.');
     }
-
+    
     if (requiredRoles.length > 0 && !requiredRoles.includes(userRole)) {
       throw new Error('You do not have permission to perform this action.');
     }
-
+    
     return true;
   }
 
-  // Helper method to extract user role from token (if stored in JWT)
   getUserRoleFromToken() {
-    const token = localStorage.getItem('accessToken');
+    const token = localStorage.getItem('accessToken') || localStorage.getItem('token');
     
     if (!token) return null;
-
+    
     try {
-      // Decode JWT token to get role (if role is stored in token)
       const payload = JSON.parse(atob(token.split('.')[1]));
       return payload.role || null;
     } catch (error) {
@@ -505,12 +875,11 @@ class ApiService {
     }
   }
 
-  // Get user ID from token
   getUserIdFromToken() {
-    const token = localStorage.getItem('accessToken');
+    const token = localStorage.getItem('accessToken') || localStorage.getItem('token');
     
     if (!token) return null;
-
+    
     try {
       const payload = JSON.parse(atob(token.split('.')[1]));
       return payload.userId || payload.id || null;
@@ -520,11 +889,10 @@ class ApiService {
     }
   }
 
-  // Check if user is authenticated
   isAuthenticated() {
-    const token = localStorage.getItem('accessToken');
+    const token = localStorage.getItem('accessToken') || localStorage.getItem('token');
     if (!token) return false;
-
+    
     try {
       const payload = JSON.parse(atob(token.split('.')[1]));
       const currentTime = Date.now() / 1000;
@@ -534,10 +902,10 @@ class ApiService {
     }
   }
 
-  // Clear authentication data
   clearAuth() {
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
+    localStorage.removeItem('token');
   }
 }
 

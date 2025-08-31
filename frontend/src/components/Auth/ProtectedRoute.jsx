@@ -1,40 +1,41 @@
-// src/components/Auth/ProtectedRoute.jsx - FIXED VERSION
 import React from 'react';
-import { Navigate } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext'; // FIXED: Correct import path
-import Layout from '../Layout/Layout';
+import { Navigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 
-const ProtectedRoute = ({ children, requireVerified = true }) => {
+const ProtectedRoute = ({ children, adminOnly = false, requiresRole = null }) => {
   const { user, loading } = useAuth();
-
-  console.log('ProtectedRoute - User:', user);
-  console.log('ProtectedRoute - Loading:', loading);
-  console.log('ProtectedRoute - RequireVerified:', requireVerified);
+  const location = useLocation();
 
   if (loading) {
     return (
-      <Layout showHeader={false}>
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-        </div>
-      </Layout>
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
     );
   }
 
-  // Check if user exists and has valid token
-  const token = localStorage.getItem('accessToken');
-  if (!user || !token) {
-    console.log('ProtectedRoute - No user or token, redirecting to login');
-    return <Navigate to="/login" replace />;
+  // Not authenticated
+  if (!user) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // Check email verification if required
-  if (requireVerified && !user.isVerified) {
-    console.log('ProtectedRoute - User not verified, redirecting to verify-email');
-    return <Navigate to={`/verify-email?email=${encodeURIComponent(user.email)}`} replace />;
+  // Check for admin-only routes
+  if (adminOnly && !user.isAdmin) {
+    console.log('🚫 Non-admin user trying to access admin route');
+    return <Navigate to="/unauthorized" replace />;
   }
 
-  console.log('ProtectedRoute - All checks passed, rendering children');
+  // Check for specific role requirements
+  if (requiresRole && user.role !== requiresRole) {
+    console.log(`🚫 User with role ${user.role} trying to access ${requiresRole} route`);
+    return <Navigate to="/unauthorized" replace />;
+  }
+
+  // Email verification check (skip for admin)
+  if (!user.isAdmin && !user.emailVerified && !user.isVerified) {
+    return <Navigate to="/verify-email" replace />;
+  }
+
   return children;
 };
 
