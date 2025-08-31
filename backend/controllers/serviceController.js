@@ -366,45 +366,97 @@ export const updateServiceRequestStatus = async (req, res) => {
 };
 
 // Cancel service request (for end users)
+// Cancel service request (for end users)
 export const cancelServiceRequest = async (req, res) => {
   try {
     const { id } = req.params;
+    const { reason } = req.body; // Allow optional cancellation reason
     const endUserId = req.user.id;
 
+    console.log('🔄 Cancelling service request:', id, 'by user:', endUserId);
+
+    // Validate ObjectId format
+    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid request ID format'
+      });
+    }
+
+    // Find the service request
     const serviceRequest = await prisma.serviceRequest.findFirst({
       where: {
         id,
         endUserId,
         status: { in: ['PENDING', 'ACCEPTED'] }
+      },
+      include: {
+        mechanic: {
+          select: {
+            firstName: true,
+            lastName: true,
+            phone: true
+          }
+        }
       }
     });
 
     if (!serviceRequest) {
       return res.status(404).json({
         success: false,
-        message: 'Service request not found or cannot be cancelled'
+        message: 'Service request not found or cannot be cancelled. Only pending or accepted requests can be cancelled.'
       });
     }
 
+    // Check if request is in a cancellable state
+    if (!['PENDING', 'ACCEPTED'].includes(serviceRequest.status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot cancel request with status: ${serviceRequest.status.toLowerCase()}`
+      });
+    }
+
+    // Update the request
     const updatedRequest = await prisma.serviceRequest.update({
       where: { id },
       data: {
         status: 'CANCELLED',
-        cancelledAt: new Date()
+        cancelledAt: new Date(),
+        customerNotes: reason ? `Cancelled by customer: ${reason}` : 'Cancelled by customer',
+        updatedAt: new Date()
+      },
+      include: {
+        mechanic: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            phone: true
+          }
+        }
       }
     });
 
     // Log activity
-    await prisma.activityLog.create({
-      data: {
-        action: 'request_cancelled',
-        userId: endUserId,
-        details: {
-          requestId: updatedRequest.requestId,
-          reason: 'cancelled_by_user'
+    try {
+      await prisma.activityLog.create({
+        data: {
+          action: 'request_cancelled',
+          userId: endUserId,
+          details: {
+            requestId: updatedRequest.requestId,
+            reason: reason || 'cancelled_by_user',
+            previousStatus: serviceRequest.status,
+            cancelledAt: new Date().toISOString(),
+            mechanicWasAssigned: !!serviceRequest.mechanicId
+          }
         }
-      }
-    });
+      });
+    } catch (logError) {
+      console.warn('⚠️ Failed to log activity:', logError);
+    }
+
+    console.log('✅ Service request cancelled successfully');
 
     res.json({
       success: true,
@@ -413,7 +465,15 @@ export const cancelServiceRequest = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error cancelling service request:', error);
+    console.error('❌ Error cancelling service request:', error);
+    
+    if (error.code === 'P2025') {
+      return res.status(404).json({
+        success: false,
+        message: 'Service request not found or no longer available'
+      });
+    }
+
     res.status(500).json({
       success: false,
       message: 'Failed to cancel service request',

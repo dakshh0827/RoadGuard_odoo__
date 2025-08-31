@@ -1,18 +1,19 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { FiCalendar, FiList, FiTrello, FiMapPin, FiClock, FiUser, FiPhone, FiCheck, FiX, FiRefreshCw, FiAlertCircle, FiFilter, FiEye, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import Layout from '../components/Layout/Layout';
-import ServiceRequestModal from '../components/requests/ServiceRequestModal';
+import ServiceRequestModal from '../components/requests/ServiceRequestModal'; // Changed from AcceptRejectModal
 import { api } from '../services/api';
 import { SERVICE_STATUS, SERVICE_TYPE_DISPLAY, VEHICLE_TYPE_DISPLAY, ERROR_MESSAGES, SUCCESS_MESSAGES } from '../utils/constants';
 
 const WorkerDashboard = () => {
   const [viewMode, setViewMode] = useState('list');
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState(null);
   const [serviceRequests, setServiceRequests] = useState([]);
   const [availableRequests, setAvailableRequests] = useState([]);
   const [selectedRequest, setSelectedRequest] = useState(null);
-  const [showRequestModal, setShowRequestModal] = useState(false);
+  const [showServiceRequestModal, setShowServiceRequestModal] = useState(false);
   const [filters, setFilters] = useState({
     status: '',
     serviceType: '',
@@ -32,12 +33,13 @@ const WorkerDashboard = () => {
     'available': { name: 'Available', items: [] },
     'accepted': { name: 'Accepted', items: [] },
     'in-progress': { name: 'In Progress', items: [] },
-    'completed': { name: 'Completed', items: [] }
+    'completed': { name: 'Completed', items: [] },
+    'rejected': { name: 'Rejected', items: [] }
   });
   
   // Calendar view state
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [calendarView, setCalendarView] = useState('month'); // month, week, day
+  const [calendarView, setCalendarView] = useState('month');
   const [notifications, setNotifications] = useState([]);
 
   useEffect(() => {
@@ -54,12 +56,17 @@ const WorkerDashboard = () => {
       setLoading(true);
       setError(null);
       
-      const response = await api.getMechanicServiceRequests({
+      const params = {
         page: pagination.page,
         limit: pagination.limit,
-        ...(filters.status && { status: filters.status })
-      });
+        maxDistance: filters.maxDistance
+      };
 
+      if (filters.status) params.status = filters.status;
+      if (filters.serviceType) params.serviceType = filters.serviceType;
+      if (filters.vehicleType) params.vehicleType = filters.vehicleType;
+      
+      const response = await api.getMechanicServiceRequests(params);
       console.log('📥 Service requests response:', response);
 
       if (response.success) {
@@ -83,21 +90,21 @@ const WorkerDashboard = () => {
     try {
       console.log('🔄 Fetching available requests...');
       
-      const response = await api.getAvailableServiceRequests({
+      const params = {
         page: 1,
-        limit: 20,
-        serviceType: filters.serviceType,
-        vehicleType: filters.vehicleType,
+        limit: 50,
         maxDistance: filters.maxDistance
-      });
+      };
 
+      if (filters.serviceType) params.serviceType = filters.serviceType;
+      if (filters.vehicleType) params.vehicleType = filters.vehicleType;
+      
+      const response = await api.getAvailableServiceRequests(params);
       console.log('📥 Available requests response:', response);
 
       if (response.success) {
         const available = response.data.serviceRequests || [];
         setAvailableRequests(available);
-        
-        // Update kanban columns with both service requests and available requests
         updateKanbanColumns([...serviceRequests, ...available]);
       } else {
         console.warn('⚠️ Failed to fetch available requests:', response.message);
@@ -110,14 +117,12 @@ const WorkerDashboard = () => {
   const updateKanbanColumns = (allRequests) => {
     console.log('🔄 Updating kanban columns with all requests:', allRequests);
 
-    // Group requests by status
     const grouped = allRequests.reduce((acc, request) => {
       let status = request.status;
       if (typeof status === 'string') {
         status = status.toLowerCase().replace('_', '-');
       }
       
-      // Map status to kanban column
       let columnKey = status;
       if (status === 'pending') {
         columnKey = 'available';
@@ -125,7 +130,6 @@ const WorkerDashboard = () => {
       
       if (!acc[columnKey]) acc[columnKey] = [];
       
-      // Avoid duplicates
       const exists = acc[columnKey].find(r => r.id === request.id);
       if (!exists) {
         acc[columnKey].push(request);
@@ -138,102 +142,29 @@ const WorkerDashboard = () => {
       available: { ...prev.available, items: grouped.available || [] },
       accepted: { ...prev.accepted, items: grouped.accepted || [] },
       'in-progress': { ...prev['in-progress'], items: grouped['in-progress'] || [] },
-      completed: { ...prev.completed, items: grouped.completed || [] }
+      completed: { ...prev.completed, items: grouped.completed || [] },
+      rejected: { ...prev.rejected, items: grouped.rejected || [] }
     }));
-  };
-
-  // Calendar helper functions
-  const getCalendarDates = () => {
-    const now = new Date(currentDate);
-    
-    if (calendarView === 'month') {
-      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      const startDate = new Date(firstDay);
-      startDate.setDate(startDate.getDate() - firstDay.getDay());
-      
-      const dates = [];
-      for (let i = 0; i < 42; i++) {
-        const date = new Date(startDate);
-        date.setDate(date.getDate() + i);
-        dates.push(date);
-      }
-      return dates;
-    } else if (calendarView === 'week') {
-      const startOfWeek = new Date(now);
-      startOfWeek.setDate(now.getDate() - now.getDay());
-      
-      const dates = [];
-      for (let i = 0; i < 7; i++) {
-        const date = new Date(startOfWeek);
-        date.setDate(date.getDate() + i);
-        dates.push(date);
-      }
-      return dates;
-    } else { // day
-      return [new Date(now)];
-    }
-  };
-
-  const getEventsForDate = (date) => {
-    const allRequests = [...serviceRequests, ...availableRequests];
-    return allRequests.filter(request => {
-      const requestDate = new Date(request.createdAt);
-      return (
-        requestDate.getDate() === date.getDate() &&
-        requestDate.getMonth() === date.getMonth() &&
-        requestDate.getFullYear() === date.getFullYear()
-      );
-    });
-  };
-
-  const navigateCalendar = (direction) => {
-    const newDate = new Date(currentDate);
-    
-    if (calendarView === 'month') {
-      newDate.setMonth(newDate.getMonth() + (direction === 'next' ? 1 : -1));
-    } else if (calendarView === 'week') {
-      newDate.setDate(newDate.getDate() + (direction === 'next' ? 7 : -7));
-    } else { // day
-      newDate.setDate(newDate.getDate() + (direction === 'next' ? 1 : -1));
-    }
-    
-    setCurrentDate(newDate);
-  };
-
-  const formatCalendarTitle = () => {
-    const options = { 
-      year: 'numeric', 
-      month: 'long',
-      ...(calendarView === 'day' && { day: 'numeric' })
-    };
-    
-    if (calendarView === 'week') {
-      const dates = getCalendarDates();
-      const start = dates[0].toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      const end = dates[6].toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-      return `${start} - ${end}`;
-    }
-    
-    return currentDate.toLocaleDateString('en-US', options);
   };
 
   const handleViewRequest = (request) => {
     setSelectedRequest(request);
-    setShowRequestModal(true);
+    setShowServiceRequestModal(true);
   };
 
   const handleAcceptRequest = async (requestId) => {
     try {
+      setActionLoading(true);
       console.log('🔄 Accepting request:', requestId);
       
       const response = await api.acceptServiceRequest(requestId);
       
       if (response.success) {
         addNotification('Service request accepted successfully!', 'success');
-        fetchServiceRequests();
+        setShowServiceRequestModal(false);
+        await fetchServiceRequests();
         if (filters.showOnlyAvailable) {
-          fetchAvailableRequests();
+          await fetchAvailableRequests();
         }
       } else {
         throw new Error(response.message || 'Failed to accept request');
@@ -241,11 +172,41 @@ const WorkerDashboard = () => {
     } catch (err) {
       console.error('❌ Error accepting request:', err);
       addNotification(err.message || 'Failed to accept service request', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // FIXED: Pass reason as an object with 'reason' property
+  const handleRejectRequest = async (requestId, reason = '') => {
+    try {
+      setActionLoading(true);
+      console.log('🔄 Rejecting request:', requestId, 'with reason:', reason);
+      
+      // FIXED: Pass reason as an object, not a string
+      const response = await api.rejectServiceRequest(requestId, { reason });
+      
+      if (response.success) {
+        addNotification('Service request rejected successfully!', 'success');
+        setShowServiceRequestModal(false);
+        await fetchServiceRequests();
+        if (filters.showOnlyAvailable) {
+          await fetchAvailableRequests();
+        }
+      } else {
+        throw new Error(response.message || 'Failed to reject request');
+      }
+    } catch (err) {
+      console.error('❌ Error rejecting request:', err);
+      addNotification(err.message || 'Failed to reject service request', 'error');
+    } finally {
+      setActionLoading(false);
     }
   };
 
   const handleUpdateStatus = async (requestId, newStatus, additionalData = {}) => {
     try {
+      setActionLoading(true);
       console.log('🔄 Updating status:', requestId, newStatus, additionalData);
       
       const response = await api.updateMechanicServiceRequestStatus(requestId, {
@@ -254,15 +215,17 @@ const WorkerDashboard = () => {
       });
       
       if (response.success) {
-        addNotification(`Request status updated to ${newStatus}`, 'success');
+        addNotification(`Request status updated to ${newStatus.toLowerCase().replace('_', ' ')}`, 'success');
+        setShowServiceRequestModal(false);
         fetchServiceRequests();
-        setShowRequestModal(false);
       } else {
         throw new Error(response.message || 'Failed to update status');
       }
     } catch (err) {
       console.error('❌ Error updating status:', err);
       addNotification(err.message || 'Failed to update request status', 'error');
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -296,103 +259,241 @@ const WorkerDashboard = () => {
     return `${Math.floor(diffInMinutes / 1440)}d ago`;
   };
 
-  const RequestCard = ({ request, showAcceptButton = false, compact = false }) => (
-    <div className={`bg-gray-700 rounded-lg ${compact ? 'p-2 mb-2' : 'p-4 mb-3'} hover:bg-gray-600 transition-colors`}>
-      <div className="flex justify-between items-start mb-2">
-        <div>
-          <h3 className={`font-semibold text-white ${compact ? 'text-sm' : ''}`}>
-            {SERVICE_TYPE_DISPLAY[request.serviceType] || request.serviceType}
-          </h3>
-          <p className={`text-gray-400 ${compact ? 'text-xs' : 'text-sm'}`}>
-            {request.vehicleMake} {request.vehicleModel} ({VEHICLE_TYPE_DISPLAY[request.vehicleType]})
-          </p>
-        </div>
-        <span className={`px-2 py-1 rounded-full ${compact ? 'text-xs' : 'text-xs'} font-medium ${
-          SERVICE_STATUS[request.status]?.bgColor || 'bg-gray-100'
-        } ${SERVICE_STATUS[request.status]?.textColor || 'text-gray-800'}`}>
-          {SERVICE_STATUS[request.status]?.label || request.status}
-        </span>
-      </div>
-      
-      {!compact && (
-        <div className="space-y-2 text-sm text-gray-300">
-          <div className="flex items-center gap-2">
-            <FiUser size={14} />
-            <span>{request.endUser?.firstName} {request.endUser?.lastName}</span>
-            {request.endUser?.phone && (
-              <>
-                <FiPhone size={14} className="ml-2" />
-                <span>{request.endUser.phone}</span>
-              </>
-            )}
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <FiMapPin size={14} />
-            <span className="truncate">{request.address}</span>
-            {request.distance && (
-              <span className="text-blue-400">({formatDistance(request.distance)})</span>
-            )}
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <FiClock size={14} />
-            <span>{formatTimeAgo(request.createdAt)}</span>
-            {request.estimatedTravelTime && (
-              <span className="text-gray-400">• ~{request.estimatedTravelTime}min travel</span>
-            )}
-          </div>
-        </div>
-      )}
-      
-      {request.description && !compact && (
-        <p className="text-sm text-gray-300 mt-2 p-2 bg-gray-800 rounded">{request.description}</p>
-      )}
-      
-      <div className={`flex gap-2 ${compact ? 'mt-2' : 'mt-3'}`}>
+  const getActionButtons = (request) => {
+    const actions = [];
+    
+    // View details button - always available
+    actions.push(
+      <button
+        key="view"
+        onClick={() => handleViewRequest(request)}
+        className="flex items-center gap-1 px-3 py-1 bg-gray-600 hover:bg-gray-500 text-white rounded text-sm"
+      >
+        <FiEye size={14} />
+        View
+      </button>
+    );
+
+    // Accept/Reject buttons for PENDING requests without mechanic
+    if (request.status === 'PENDING' && !request.mechanicId) {
+      actions.push(
         <button
-          onClick={() => handleViewRequest(request)}
-          className={`flex items-center gap-1 px-3 py-1 bg-gray-600 hover:bg-gray-500 text-white rounded ${compact ? 'text-xs' : 'text-sm'}`}
+          key="accept"
+          onClick={() => handleAcceptRequest(request.id)}
+          disabled={actionLoading}
+          className="flex items-center gap-1 px-3 py-1 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded text-sm"
         >
-          <FiEye size={14} />
-          View
+          <FiCheck size={14} />
+          Accept
         </button>
-        
-        {showAcceptButton && request.status === 'PENDING' && (
+      );
+
+      actions.push(
+        <button
+          key="reject"
+          onClick={() => {
+            const reason = prompt('Reason for rejection (optional):');
+            if (reason !== null) { // User didn't cancel
+              handleRejectRequest(request.id, reason);
+            }
+          }}
+          disabled={actionLoading}
+          className="flex items-center gap-1 px-3 py-1 bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white rounded text-sm"
+        >
+          <FiX size={14} />
+          Reject
+        </button>
+      );
+    }
+
+    // Status update buttons for assigned requests
+    if (request.mechanicId && (request.isAssignedToMe || request.mechanicActions?.canUpdateStatus)) {
+      if (request.status === 'ACCEPTED') {
+        actions.push(
           <button
-            onClick={() => handleAcceptRequest(request.id)}
-            className={`flex items-center gap-1 px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded ${compact ? 'text-xs' : 'text-sm'}`}
-          >
-            <FiCheck size={14} />
-            Accept
-          </button>
-        )}
-        
-        {request.mechanicId && request.status === 'ACCEPTED' && (
-          <button
+            key="start"
             onClick={() => handleUpdateStatus(request.id, 'IN_PROGRESS')}
-            className={`flex items-center gap-1 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded ${compact ? 'text-xs' : 'text-sm'}`}
+            disabled={actionLoading}
+            className="flex items-center gap-1 px-3 py-1 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded text-sm"
           >
             <FiRefreshCw size={14} />
-            Start
+            Start Work
           </button>
-        )}
-        
-        {request.mechanicId && request.status === 'IN_PROGRESS' && (
+        );
+      }
+
+      if (request.status === 'IN_PROGRESS') {
+        actions.push(
           <button
+            key="complete"
             onClick={() => {
               const cost = prompt('Enter service cost (optional):');
               handleUpdateStatus(request.id, 'COMPLETED', { cost: cost || undefined });
             }}
-            className={`flex items-center gap-1 px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded ${compact ? 'text-xs' : 'text-sm'}`}
+            disabled={actionLoading}
+            className="flex items-center gap-1 px-3 py-1 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded text-sm"
           >
             <FiCheck size={14} />
             Complete
           </button>
+        );
+      }
+    }
+
+    return actions;
+  };
+
+  const RequestCard = ({ request, compact = false }) => {
+    const actions = getActionButtons(request);
+    const canAccept = request.status === 'PENDING' && !request.mechanicId;
+    const isAssignedToMe = request.mechanicId && request.isAssignedToMe;
+
+    return (
+      <div className={`bg-gray-700 rounded-lg ${compact ? 'p-2 mb-2' : 'p-4 mb-3'} hover:bg-gray-600 transition-colors`}>
+        <div className="flex justify-between items-start mb-2">
+          <div>
+            <h3 className={`font-semibold text-white ${compact ? 'text-sm' : ''}`}>
+              {SERVICE_TYPE_DISPLAY[request.serviceType] || request.serviceType}
+            </h3>
+            <p className={`text-gray-400 ${compact ? 'text-xs' : 'text-sm'}`}>
+              {request.vehicleMake} {request.vehicleModel} ({VEHICLE_TYPE_DISPLAY[request.vehicleType]})
+            </p>
+          </div>
+          <div className="flex flex-col items-end gap-1">
+            <span className={`px-2 py-1 rounded-full ${compact ? 'text-xs' : 'text-xs'} font-medium ${
+              SERVICE_STATUS[request.status]?.bgColor || 'bg-gray-100'
+            } ${SERVICE_STATUS[request.status]?.textColor || 'text-gray-800'}`}>
+              {SERVICE_STATUS[request.status]?.label || request.status}
+            </span>
+            {isAssignedToMe && (
+              <span className="px-2 py-1 rounded-full text-xs bg-blue-600 text-white">
+                Assigned to You
+              </span>
+            )}
+            {canAccept && (
+              <span className="px-2 py-1 rounded-full text-xs bg-yellow-600 text-white">
+                Available
+              </span>
+            )}
+          </div>
+        </div>
+        
+        {!compact && (
+          <div className="space-y-2 text-sm text-gray-300">
+            <div className="flex items-center gap-2">
+              <FiUser size={14} />
+              <span>{request.endUser?.firstName} {request.endUser?.lastName}</span>
+              {request.endUser?.phone && (
+                <>
+                  <FiPhone size={14} className="ml-2" />
+                  <span>{request.endUser.phone}</span>
+                </>
+              )}
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <FiMapPin size={14} />
+              <span className="truncate">{request.address}</span>
+              {request.distance && (
+                <span className="text-blue-400">({formatDistance(request.distance)})</span>
+              )}
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <FiClock size={14} />
+              <span>{formatTimeAgo(request.createdAt)}</span>
+              {request.estimatedTravelTime && (
+                <span className="text-gray-400">• ~{request.estimatedTravelTime}min travel</span>
+              )}
+            </div>
+          </div>
         )}
+        
+        {request.description && !compact && (
+          <p className="text-sm text-gray-300 mt-2 p-2 bg-gray-800 rounded">{request.description}</p>
+        )}
+        
+        <div className={`flex gap-2 ${compact ? 'mt-2' : 'mt-3'} flex-wrap`}>
+          {actions}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
+
+  // Calendar helper functions remain the same...
+  const getCalendarDates = () => {
+    const now = new Date(currentDate);
+    
+    if (calendarView === 'month') {
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+      const startDate = new Date(firstDay);
+      startDate.setDate(startDate.getDate() - firstDay.getDay());
+      
+      const dates = [];
+      for (let i = 0; i < 42; i++) {
+        const date = new Date(startDate);
+        date.setDate(date.getDate() + i);
+        dates.push(date);
+      }
+      return dates;
+    } else if (calendarView === 'week') {
+      const startOfWeek = new Date(now);
+      startOfWeek.setDate(now.getDate() - now.getDay());
+      
+      const dates = [];
+      for (let i = 0; i < 7; i++) {
+        const date = new Date(startOfWeek);
+        date.setDate(date.getDate() + i);
+        dates.push(date);
+      }
+      return dates;
+    } else {
+      return [new Date(now)];
+    }
+  };
+
+  const getEventsForDate = (date) => {
+    const allRequests = [...serviceRequests, ...availableRequests];
+    return allRequests.filter(request => {
+      const requestDate = new Date(request.createdAt);
+      return (
+        requestDate.getDate() === date.getDate() &&
+        requestDate.getMonth() === date.getMonth() &&
+        requestDate.getFullYear() === date.getFullYear()
+      );
+    });
+  };
+
+  const navigateCalendar = (direction) => {
+    const newDate = new Date(currentDate);
+    
+    if (calendarView === 'month') {
+      newDate.setMonth(newDate.getMonth() + (direction === 'next' ? 1 : -1));
+    } else if (calendarView === 'week') {
+      newDate.setDate(newDate.getDate() + (direction === 'next' ? 7 : -7));
+    } else {
+      newDate.setDate(newDate.getDate() + (direction === 'next' ? 1 : -1));
+    }
+    
+    setCurrentDate(newDate);
+  };
+
+  const formatCalendarTitle = () => {
+    const options = { 
+      year: 'numeric', 
+      month: 'long',
+      ...(calendarView === 'day' && { day: 'numeric' })
+    };
+    
+    if (calendarView === 'week') {
+      const dates = getCalendarDates();
+      const start = dates[0].toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const end = dates[6].toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      return `${start} - ${end}`;
+    }
+    
+    return currentDate.toLocaleDateString('en-US', options);
+  };
 
   // Calendar Day Component
   const CalendarDay = ({ date, isCurrentMonth = true }) => {
@@ -467,18 +568,20 @@ const WorkerDashboard = () => {
           </div>
 
           {/* Service Request Modal */}
-          {showRequestModal && selectedRequest && (
+          {showServiceRequestModal && selectedRequest && (
             <ServiceRequestModal
-              isOpen={showRequestModal}
-              onClose={() => setShowRequestModal(false)}
+              isOpen={showServiceRequestModal}
+              onClose={() => setShowServiceRequestModal(false)}
               request={selectedRequest}
               onAccept={handleAcceptRequest}
+              onReject={handleRejectRequest}
               onUpdateStatus={handleUpdateStatus}
+              loading={actionLoading}
             />
           )}
 
           <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
-            {/* Header with filters */}
+            {/* Header and filters remain the same... */}
             <div className="flex flex-col md:flex-row gap-4 items-center justify-between mb-6">
               <h1 className="text-2xl font-bold">Service Requests</h1>
               
@@ -553,9 +656,10 @@ const WorkerDashboard = () => {
                   fetchServiceRequests();
                   if (filters.showOnlyAvailable) fetchAvailableRequests();
                 }}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
+                disabled={loading}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 rounded-md transition-colors"
               >
-                <FiRefreshCw size={16} />
+                <FiRefreshCw size={16} className={loading ? 'animate-spin' : ''} />
                 <span>Refresh</span>
               </button>
             </div>
@@ -590,13 +694,13 @@ const WorkerDashboard = () => {
                         </div>
                       ) : (
                         availableRequests.map(request => (
-                          <RequestCard key={request.id} request={request} showAcceptButton />
+                          <RequestCard key={request.id} request={request} />
                         ))
                       )}
                     </>
                   ) : (
                     <>
-                      <h2 className="text-xl font-semibold mb-4">Your Service Requests</h2>
+                      <h2 className="text-xl font-semibold mb-4">All Service Requests</h2>
                       {serviceRequests.length === 0 ? (
                         <div className="text-center py-8 text-gray-400">
                           <FiList size={48} className="mx-auto mb-4 opacity-50" />
@@ -640,7 +744,7 @@ const WorkerDashboard = () => {
               
               {/* KANBAN VIEW */}
               {viewMode === 'kanban' && (
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                   {Object.entries(kanbanColumns).map(([columnId, column]) => (
                     <div key={columnId} className="bg-gray-900 rounded-lg p-4 min-h-[400px]">
                       <h3 className="font-bold text-lg mb-4 text-center flex items-center justify-between">
@@ -653,8 +757,7 @@ const WorkerDashboard = () => {
                         {column.items.map((item) => (
                           <RequestCard 
                             key={item.id} 
-                            request={item} 
-                            showAcceptButton={columnId === 'available'} 
+                            request={item}
                             compact
                           />
                         ))}
@@ -669,7 +772,7 @@ const WorkerDashboard = () => {
                 </div>
               )}
 
-              {/* CALENDAR VIEW */}
+              {/* CALENDAR VIEW - remains the same... */}
               {viewMode === 'calendar' && (
                 <div>
                   {/* Calendar Header */}
@@ -752,7 +855,6 @@ const WorkerDashboard = () => {
 
                   {calendarView === 'week' && (
                     <div className="bg-gray-800 rounded-lg overflow-hidden">
-                      {/* Day Headers */}
                       <div className="grid grid-cols-7 bg-gray-700">
                         {getCalendarDates().map((date, index) => (
                           <div key={index} className="p-3 text-center border-r border-gray-600 last:border-r-0">
@@ -766,7 +868,6 @@ const WorkerDashboard = () => {
                         ))}
                       </div>
                       
-                      {/* Week Days */}
                       <div className="grid grid-cols-7">
                         {getCalendarDates().map((date, index) => (
                           <CalendarDay key={index} date={date} isCurrentMonth={true} />
@@ -790,7 +891,10 @@ const WorkerDashboard = () => {
                       
                       <div className="space-y-4">
                         {getEventsForDate(currentDate).map(request => (
-                          <RequestCard key={request.id} request={request} showAcceptButton={request.status === 'PENDING'} />
+                          <RequestCard 
+                            key={request.id} 
+                            request={request}
+                          />
                         ))}
                         
                         {getEventsForDate(currentDate).length === 0 && (

@@ -7,7 +7,7 @@ import {
   updateServiceRequestStatus,
   cancelServiceRequest,
   upload
-} from '../controllers/serviceController.js';
+} from '../controllers/serviceController.js'; // Make sure this import path is correct
 import { 
   authenticateToken,
   requireVerified,
@@ -51,11 +51,11 @@ router.patch('/:id/status',
   updateServiceRequestStatus
 );
 
-// Cancel service request (end users only, for their own requests)
+// FIXED: Cancel service request (end users only, for their own requests)
 router.patch('/:id/cancel', 
-  canAccessServiceRequest,
+  requireVerified, // Ensure user is verified
   logActivity('service_request_cancelled'),
-  cancelServiceRequest
+  cancelServiceRequest // This will handle the ownership check internally
 );
 
 export default router;

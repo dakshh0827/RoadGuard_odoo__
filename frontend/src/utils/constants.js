@@ -1,4 +1,4 @@
-// src/utils/constants.js - UPDATED WITH MECHANIC ENDPOINTS
+// src/utils/constants.js - UPDATED WITH REJECTED STATUS
 export const API_BASE_URL = 'http://localhost:5001/api';
 export const OAUTH_BASE_URL = 'http://localhost:5001/auth';
 
@@ -41,6 +41,7 @@ export const ROLE_PERMISSIONS = {
   MECHANIC: [
     'VIEW_SERVICE_REQUESTS',
     'ACCEPT_REQUESTS',
+    'REJECT_REQUESTS', // NEW: Added reject permission
     'UPDATE_REQUEST_STATUS',
     'VIEW_EARNINGS'
   ],
@@ -79,12 +80,13 @@ export const SERVICE_REQUEST_ENDPOINTS = {
   CANCEL: '/service-requests'
 };
 
-// NEW: Mechanic-specific endpoints
+// Mechanic-specific endpoints
 export const MECHANIC_ENDPOINTS = {
   AVAILABLE_REQUESTS: '/mechanic/service-requests/available',
   MY_REQUESTS: '/mechanic/service-requests',
   REQUEST_DETAILS: '/mechanic/service-requests',
   ACCEPT_REQUEST: '/mechanic/service-requests',
+  REJECT_REQUEST: '/mechanic/service-requests', // NEW: Added reject endpoint
   UPDATE_STATUS: '/mechanic/service-requests',
   UPDATE_LOCATION: '/mechanic/location',
   UPDATE_AVAILABILITY: '/mechanic/availability',
@@ -134,7 +136,7 @@ export const VEHICLE_TYPE_DISPLAY = {
   'OTHER': 'Other'
 };
 
-// Service request status with colors for UI
+// Service request status with colors for UI - UPDATED WITH REJECTED STATUS
 export const SERVICE_STATUS = {
   PENDING: {
     label: 'Pending',
@@ -176,7 +178,7 @@ export const SERVICE_STATUS = {
     color: 'gray',
     bgColor: 'bg-gray-100',
     textColor: 'text-gray-800',
-    description: 'Request rejected'
+    description: 'Request rejected by mechanic'
   }
 };
 
@@ -205,6 +207,7 @@ export const SUCCESS_MESSAGES = {
   SERVICE_REQUEST_CANCELLED: 'Service request cancelled successfully!',
   SERVICE_REQUEST_UPDATED: 'Service request updated successfully!',
   SERVICE_REQUEST_ACCEPTED: 'Service request accepted successfully!',
+  SERVICE_REQUEST_REJECTED: 'Service request rejected successfully!', // NEW: Added reject message
   ROLE_SELECTED: 'Role selected successfully!',
   PROFILE_UPDATED: 'Profile updated successfully!',
   LOCATION_UPDATED: 'Location updated successfully!'

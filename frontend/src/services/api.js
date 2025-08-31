@@ -1,4 +1,4 @@
-// src/services/api.js - UPDATED WITH MECHANIC METHODS
+// src/services/api.js - FULLY FIXED VERSION
 import { 
   API_BASE_URL, 
   SERVICE_REQUEST_ENDPOINTS, 
@@ -29,9 +29,36 @@ class ApiService {
 
     try {
       const response = await fetch(url, config);
-      const data = await response.json();
       
       console.log('API Response status:', response.status);
+      console.log('API Response headers:', response.headers.get('content-type'));
+      
+      // FIXED: Check if response has JSON content before parsing
+      let data;
+      const contentType = response.headers.get('content-type') || '';
+      
+      if (contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        // Handle non-JSON responses (plain text, HTML, etc.)
+        const textResponse = await response.text();
+        console.log('Non-JSON response:', textResponse);
+        
+        // Try to create a standardized response format
+        if (response.ok) {
+          data = { 
+            success: true, 
+            message: textResponse || 'Operation completed successfully',
+            data: textResponse 
+          };
+        } else {
+          data = { 
+            success: false, 
+            message: textResponse || `HTTP error! status: ${response.status}` 
+          };
+        }
+      }
+      
       console.log('API Response data:', data);
       
       // Handle token refresh if needed
@@ -41,7 +68,19 @@ class ApiService {
           // Retry the original request with new token
           config.headers.Authorization = `Bearer ${localStorage.getItem('accessToken')}`;
           const retryResponse = await fetch(url, config);
-          const retryData = await retryResponse.json();
+          
+          // Handle retry response the same way
+          const retryContentType = retryResponse.headers.get('content-type') || '';
+          let retryData;
+          
+          if (retryContentType.includes('application/json')) {
+            retryData = await retryResponse.json();
+          } else {
+            const retryText = await retryResponse.text();
+            retryData = retryResponse.ok 
+              ? { success: true, message: retryText, data: retryText }
+              : { success: false, message: retryText };
+          }
           
           if (!retryResponse.ok) {
             throw new Error(retryData.message || `HTTP error! status: ${retryResponse.status}`);
@@ -104,7 +143,16 @@ class ApiService {
         credentials: 'include',
       });
 
-      const data = await response.json();
+      // FIXED: Handle refresh token response properly
+      const contentType = response.headers.get('content-type') || '';
+      let data;
+      
+      if (contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        data = { success: false, message: text };
+      }
       
       if (response.ok && data.success) {
         localStorage.setItem('accessToken', data.data.accessToken);
@@ -185,7 +233,7 @@ class ApiService {
     }
   }
 
-  // SERVICE REQUEST METHODS (Role-based access)
+  // SERVICE REQUEST METHODS (Customer)
   
   async createServiceRequest(formData) {
     try {
@@ -200,30 +248,51 @@ class ApiService {
       formDataToSend.append('serviceType', formData.serviceType);
       formDataToSend.append('issue', formData.issue || '');
       
+      // Vehicle details
+      if (formData.vehicleType) formDataToSend.append('vehicleType', formData.vehicleType);
+      if (formData.vehicleNumber) formDataToSend.append('vehicleNumber', formData.vehicleNumber);
+      if (formData.vehicleMake) formDataToSend.append('vehicleMake', formData.vehicleMake);
+      if (formData.vehicleModel) formDataToSend.append('vehicleModel', formData.vehicleModel);
+      
       // Append location data
       if (formData.location) {
         formDataToSend.append('latitude', formData.location.lat);
         formDataToSend.append('longitude', formData.location.lng);
         formDataToSend.append('address', formData.location.address || 'Location address');
       }
+
+      // Customer notes
+      if (formData.customerNotes) {
+        formDataToSend.append('customerNotes', formData.customerNotes);
+      }
       
-      // Append image if present
+      // Append images if present
       if (formData.image) {
         // Validate file size (5MB limit)
         if (formData.image.size > 5 * 1024 * 1024) {
-          throw new Error(ERROR_MESSAGES.FILE_TOO_LARGE);
+          throw new Error(ERROR_MESSAGES.FILE_TOO_LARGE || 'File too large');
         }
         
         // Validate file type
         const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
         if (!allowedTypes.includes(formData.image.type)) {
-          throw new Error(ERROR_MESSAGES.INVALID_FILE_TYPE);
+          throw new Error(ERROR_MESSAGES.INVALID_FILE_TYPE || 'Invalid file type');
         }
         
         formDataToSend.append('images', formData.image);
       }
 
-      return this.request(SERVICE_REQUEST_ENDPOINTS.CREATE, {
+      // Handle multiple images
+      if (formData.images && Array.isArray(formData.images)) {
+        formData.images.forEach((image, index) => {
+          if (image.size > 5 * 1024 * 1024) {
+            throw new Error(`Image ${index + 1}: File too large`);
+          }
+          formDataToSend.append('images', image);
+        });
+      }
+
+      return this.request('/service-requests', {
         method: 'POST',
         body: formDataToSend
       });
@@ -242,34 +311,35 @@ class ApiService {
       ...(status && { status })
     });
 
-    return this.get(`${SERVICE_REQUEST_ENDPOINTS.GET_USER_REQUESTS}?${queryParams}`);
+    return this.get(`/service-requests?${queryParams}`);
   }
 
   async getServiceRequestById(id) {
-    return this.get(`${SERVICE_REQUEST_ENDPOINTS.GET_BY_ID}/${id}`);
+    return this.get(`/service-requests/${id}`);
   }
 
   async updateServiceRequestStatus(id, statusData) {
-    return this.request(`${SERVICE_REQUEST_ENDPOINTS.UPDATE_STATUS}/${id}/status`, {
+    return this.request(`/service-requests/${id}/status`, {
       method: 'PATCH',
       body: JSON.stringify(statusData)
     });
   }
 
-  async cancelServiceRequest(id) {
-    return this.request(`${SERVICE_REQUEST_ENDPOINTS.CANCEL}/${id}/cancel`, {
-      method: 'PATCH'
+  // FIXED: Cancel service request method
+  async cancelServiceRequest(id, data = {}) {
+    return this.request(`/service-requests/${id}/cancel`, {
+      method: 'PATCH',
+      body: JSON.stringify(data)
     });
   }
 
   // MECHANIC-SPECIFIC METHODS
   
   async getAvailableServiceRequests(params = {}) {
-    const { page = 1, limit = 10, status = 'PENDING', serviceType, vehicleType, maxDistance = 50 } = params;
+    const { page = 1, limit = 20, serviceType, vehicleType, maxDistance = 50 } = params;
     const queryParams = new URLSearchParams({
       page: page.toString(),
       limit: limit.toString(),
-      status,
       maxDistance: maxDistance.toString(),
       ...(serviceType && { serviceType }),
       ...(vehicleType && { vehicleType })
@@ -279,11 +349,14 @@ class ApiService {
   }
 
   async getMechanicServiceRequests(params = {}) {
-    const { page = 1, limit = 10, status } = params;
+    const { page = 1, limit = 10, status, serviceType, vehicleType, maxDistance } = params;
     const queryParams = new URLSearchParams({
       page: page.toString(),
       limit: limit.toString(),
-      ...(status && { status })
+      ...(status && { status }),
+      ...(serviceType && { serviceType }),
+      ...(vehicleType && { vehicleType }),
+      ...(maxDistance && { maxDistance: maxDistance.toString() })
     });
 
     return this.get(`/mechanic/service-requests?${queryParams}`);
@@ -295,6 +368,11 @@ class ApiService {
 
   async acceptServiceRequest(requestId) {
     return this.post(`/mechanic/service-requests/${requestId}/accept`, {});
+  }
+
+  // FIXED: Reject service request method with proper data handling
+  async rejectServiceRequest(requestId, data = {}) {
+    return this.post(`/mechanic/service-requests/${requestId}/reject`, data);
   }
 
   async updateMechanicServiceRequestStatus(id, statusData) {
@@ -356,36 +434,38 @@ class ApiService {
     return this.delete(`/admin/users/${userId}`);
   }
 
+  // UTILITY METHODS
+
   // Helper method to validate service request data
   validateServiceRequestData(formData) {
     const errors = [];
 
     if (!formData.name?.trim()) {
-      errors.push(ERROR_MESSAGES.REQUIRED_FIELD('name'));
+      errors.push('Name is required');
     }
 
     if (!formData.description?.trim()) {
-      errors.push(ERROR_MESSAGES.REQUIRED_FIELD('description'));
+      errors.push('Description is required');
     }
 
     if (!formData.serviceType) {
-      errors.push(ERROR_MESSAGES.REQUIRED_FIELD('service type'));
+      errors.push('Service type is required');
     }
 
     if (!formData.location) {
-      errors.push(ERROR_MESSAGES.LOCATION_REQUIRED);
+      errors.push('Location is required');
     } else {
       const { lat, lng } = formData.location;
       
       if (!lat || !lng || isNaN(parseFloat(lat)) || isNaN(parseFloat(lng))) {
-        errors.push(ERROR_MESSAGES.INVALID_COORDINATES);
+        errors.push('Invalid coordinates provided');
       }
       
       const latitude = parseFloat(lat);
       const longitude = parseFloat(lng);
       
       if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
-        errors.push(ERROR_MESSAGES.INVALID_COORDINATES);
+        errors.push('Invalid coordinates range');
       }
     }
 
@@ -424,11 +504,46 @@ class ApiService {
       return null;
     }
   }
+
+  // Get user ID from token
+  getUserIdFromToken() {
+    const token = localStorage.getItem('accessToken');
+    
+    if (!token) return null;
+
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      return payload.userId || payload.id || null;
+    } catch (error) {
+      console.error('Error decoding token:', error);  
+      return null;
+    }
+  }
+
+  // Check if user is authenticated
+  isAuthenticated() {
+    const token = localStorage.getItem('accessToken');
+    if (!token) return false;
+
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      const currentTime = Date.now() / 1000;
+      return payload.exp > currentTime;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  // Clear authentication data
+  clearAuth() {
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
+  }
 }
 
 // Create a singleton instance
 const apiService = new ApiService();
 
-// Export both default and named exports
+// Export both default and named exports for compatibility
 export default apiService;
 export { apiService as api };

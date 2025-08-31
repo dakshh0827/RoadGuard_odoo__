@@ -1,175 +1,447 @@
-import React, { useState, useMemo } from 'react';
-import { Link } from 'react-router-dom'; // 1. IMPORT THE LINK COMPONENT
-import Layout from '../components/Layout/Layout'; 
+import React, { useState, useEffect } from 'react';
+import { FiPlus, FiMapPin, FiClock, FiUser, FiPhone, FiRefreshCw, FiAlertCircle, FiEye, FiX, FiCheck } from 'react-icons/fi';
+import Layout from '../components/Layout/Layout';
+import ServiceRequestModal from '../components/requests/ServiceRequestModal';
+import { api } from '../services/api';
+import { SERVICE_STATUS, SERVICE_TYPE_DISPLAY, VEHICLE_TYPE_DISPLAY, ERROR_MESSAGES } from '../utils/constants';
 
-// --- Mock Data ---
-const allWorkshops = [
-  { id: 1, name: 'Automobile Work Shop', image: 'https://images.unsplash.com/photo-1599493356244-18a7c2514124?ixlib=rb-4.0.3&q=85&fm=jpg&crop=entropy&cs=srgb&w=600', rating: 4, isPremium: true, location: 'Silver Auditorium, Ahmedabad, Gujarat', status: 'Open', distance: 25 },
-  { id: 2, name: 'Quick Fix Auto', image: 'https://images.unsplash.com/photo-1553854314-38627c368db5?ixlib=rb-4.0.3&q=85&fm=jpg&crop=entropy&cs=srgb&w=600', rating: 5, isPremium: false, location: 'Downtown, Ahmedabad, Gujarat', status: 'Open', distance: 5 },
-  { id: 3, name: 'Car Care Center', image: 'https://images.unsplash.com/photo-1623905500851-9b6528789e96?ixlib=rb-4.0.3&q=85&fm=jpg&crop=entropy&cs=srgb&w=600', rating: 3, isPremium: true, location: 'Uptown, Ahmedabad, Gujarat', status: 'Closed', distance: 10 },
-  { id: 4, name: 'Speedy Garage', image: 'https://images.unsplash.com/photo-1617094544843-a60d0a51351b?ixlib=rb-4.0.3&q=85&fm=jpg&crop=entropy&cs=srgb&w=600', rating: 5, isPremium: true, location: 'West End, Ahmedabad, Gujarat', status: 'Open', distance: 2 },
-  { id: 5, name: 'Engine Experts', image: 'https://images.unsplash.com/photo-1579751379299-195b1917f417?ixlib=rb-4.0.3&q=85&fm=jpg&crop=entropy&cs=srgb&w=600', rating: 4, isPremium: false, location: 'East Side, Ahmedabad, Gujarat', status: 'Open', distance: 15 },
-  { id: 6, name: 'The Wrench Masters', image: 'https://images.unsplash.com/photo-1581490282017-9f054854c693?ixlib=rb-4.0.3&q=85&fm=jpg&crop=entropy&cs=srgb&w=600', rating: 2, isPremium: false, location: 'Suburbia, Ahmedabad, Gujarat', status: 'Closed', distance: 30 },
-  { id: 7, name: 'Pro Auto Repair', image: 'https://images.unsplash.com/photo-1543038994-35b8712a8323?ixlib=rb-4.0.3&q=85&fm=jpg&crop=entropy&cs=srgb&w=600', rating: 5, isPremium: true, location: 'Industrial Park, Ahmedabad, Gujarat', status: 'Open', distance: 8 },
-  { id: 8, name: 'My Mechanic', image: 'https://images.unsplash.com/photo-1621998536294-b72e1e3b681e?ixlib=rb-4.0.3&q=85&fm=jpg&crop=entropy&cs=srgb&w=600', rating: 4, isPremium: false, location: 'City Center, Ahmedabad, Gujarat', status: 'Open', distance: 1 },
-];
+const Dashboard = () => {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [serviceRequests, setServiceRequests] = useState([]);
+  const [selectedRequest, setSelectedRequest] = useState(null);
+  const [showRequestModal, setShowRequestModal] = useState(false);
+  const [filters, setFilters] = useState({
+    status: ''
+  });
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 10,
+    total: 0,
+    pages: 0
+  });
+  const [notifications, setNotifications] = useState([]);
 
-// --- Helper Components (No Changes Here) ---
+  useEffect(() => {
+    fetchServiceRequests();
+  }, [filters, pagination.page]);
 
-const StarRating = ({ rating }) => (
-  <div className="flex items-center">
-    {[...Array(5)].map((_, i) => (
-      <svg key={i} className={`w-5 h-5 ${i < rating ? 'text-yellow-400' : 'text-gray-300'}`} fill="currentColor" viewBox="0 0 20 20">
-        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-      </svg>
-    ))}
-  </div>
-);
+  const fetchServiceRequests = async () => {
+    try {
+      console.log('🔄 Fetching customer service requests...');
+      setLoading(true);
+      setError(null);
+      
+      const response = await api.getUserServiceRequests({
+        page: pagination.page,
+        limit: pagination.limit,
+        ...(filters.status && { status: filters.status })
+      });
 
-const WorkshopItem = ({ workshop, viewMode }) => {
-    const isListView = viewMode === 'List';
-    return (
-        <div className={`bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 ${isListView ? 'flex items-center' : 'flex flex-col'}`}>
-            <img 
-                src={workshop.image} 
-                alt={workshop.name} 
-                className={`object-cover ${isListView ? 'w-40 h-full flex-shrink-0' : 'w-full h-48'}`} 
-            />
-            <div className="p-5 flex flex-col flex-grow">
-                <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-xl font-bold text-gray-800">{workshop.name}</h3>
-                    {workshop.isPremium && <span className="bg-yellow-100 text-yellow-800 text-xs font-semibold px-2.5 py-0.5 rounded-full">Premium</span>}
-                </div>
-                <div className="mb-3">
-                    <StarRating rating={workshop.rating} />
-                </div>
-                <p className="text-gray-500 text-sm flex items-center gap-1.5 mb-4">
-                    <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" /></svg>
-                    {workshop.location}
-                </p>
-                <div className={`mt-auto flex ${isListView ? 'flex-col items-start gap-2' : 'justify-between items-center'}`}>
-                    <span className={`text-sm font-medium px-3 py-1 rounded-full ${workshop.status === 'Open' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                        {workshop.status}
-                    </span>
-                    <span className="text-sm text-gray-600 font-semibold">{workshop.distance}km away</span>
-                </div>
-            </div>
-        </div>
+      console.log('📥 Customer service requests response:', response);
+
+      if (response.success) {
+        const requests = response.data.serviceRequests || [];
+        setServiceRequests(requests);
+        setPagination(response.data.pagination || pagination);
+      } else {
+        throw new Error(response.message || 'Failed to fetch service requests');
+      }
+    } catch (err) {
+      console.error('❌ Error fetching service requests:', err);
+      setError(err.message || ERROR_MESSAGES.GENERIC_ERROR);
+      setServiceRequests([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleViewRequest = (request) => {
+    setSelectedRequest(request);
+    setShowRequestModal(true);
+  };
+
+  const handleCancelRequest = async (requestId) => {
+  try {
+    // Show confirmation dialog with optional reason
+    const shouldCancel = window.confirm(
+      'Are you sure you want to cancel this service request?\n\n' +
+      'Note: If a mechanic has already accepted your request, they will be notified of the cancellation.'
     );
+
+    if (!shouldCancel) {
+      return;
+    }
+
+    // Optional: Ask for cancellation reason
+    const reason = window.prompt(
+      'Please provide a reason for cancellation (optional):'
+    );
+
+    console.log('🔄 Cancelling request:', requestId);
+    
+    const response = await api.cancelServiceRequest(requestId, { 
+      reason: reason || undefined 
+    });
+    
+    if (response.success) {
+      addNotification('Service request cancelled successfully', 'success');
+      fetchServiceRequests(); // Refresh the list
+      
+      // Close modal if it's open
+      if (showRequestModal) {
+        setShowRequestModal(false);
+      }
+    } else {
+      throw new Error(response.message || 'Failed to cancel request');
+    }
+  } catch (err) {
+    console.error('❌ Error cancelling request:', err);
+    addNotification(err.message || 'Failed to cancel service request', 'error');
+  }
 };
 
+  const addNotification = (message, type = 'info') => {
+    const notification = {
+      id: Date.now(),
+      message,
+      type,
+      timestamp: new Date()
+    };
+    setNotifications(prev => [notification, ...prev.slice(0, 4)]);
+    
+    setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n.id !== notification.id));
+    }, 5000);
+  };
 
-const Pagination = ({ currentPage, totalPages, onPageChange }) => (
-    <div className="flex justify-center items-center space-x-1 mt-8">
-        <button onClick={() => onPageChange(currentPage - 1)} disabled={currentPage === 1} className="px-3 py-2 rounded-md bg-white border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed">
-            <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+  const formatTimeAgo = (date) => {
+    if (!date) return '';
+    const now = new Date();
+    const requestDate = new Date(date);
+    const diffInMinutes = Math.floor((now - requestDate) / (1000 * 60));
+    
+    if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
+    if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)}h ago`;
+    return `${Math.floor(diffInMinutes / 1440)}d ago`;
+  };
+
+  const getStatusIcon = (status) => {
+    switch (status) {
+      case 'REJECTED':
+        return <FiX className="text-red-500" size={20} />;
+      case 'COMPLETED':
+        return <FiCheck className="text-green-500" size={20} />;
+      case 'CANCELLED':
+        return <FiX className="text-red-500" size={20} />;
+      case 'ACCEPTED':
+        return <FiUser className="text-blue-500" size={20} />;
+      case 'IN_PROGRESS':
+        return <FiClock className="text-orange-500" size={20} />;
+      default:
+        return <FiClock className="text-yellow-500" size={20} />;
+    }
+  };
+
+  const RequestCard = ({ request }) => (
+    <div className="bg-white rounded-lg p-6 shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
+      <div className="flex justify-between items-start mb-4">
+        <div className="flex items-center gap-3">
+          {getStatusIcon(request.status)}
+          <div>
+            <h3 className="font-semibold text-gray-900 text-lg">
+              {SERVICE_TYPE_DISPLAY[request.serviceType] || request.serviceType}
+            </h3>
+            <p className="text-gray-600 text-sm">
+              {request.vehicleMake} {request.vehicleModel} ({VEHICLE_TYPE_DISPLAY[request.vehicleType]})
+            </p>
+          </div>
+        </div>
+        <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+          SERVICE_STATUS[request.status]?.bgColor || 'bg-gray-100'
+        } ${SERVICE_STATUS[request.status]?.textColor || 'text-gray-800'}`}>
+          {SERVICE_STATUS[request.status]?.label || request.status}
+        </span>
+      </div>
+
+      {/* Special message for rejected requests */}
+      {request.status === 'REJECTED' && (
+        <div className="bg-red-50 border border-red-200 p-3 rounded-lg mb-4">
+          <div className="flex items-start gap-2">
+            <FiAlertCircle className="text-red-500 mt-0.5" size={16} />
+            <div>
+              <p className="text-red-800 font-medium text-sm">Request Rejected</p>
+              <p className="text-red-700 text-sm">
+                {request.mechanicNotes || 'The mechanic was unable to accept your request.'}
+              </p>
+              <p className="text-red-600 text-xs mt-1">
+                You can create a new service request or contact other mechanics.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      <div className="space-y-3 text-sm text-gray-600">
+        {/* Mechanic Info */}
+        {request.mechanic && (
+          <div className="flex items-center gap-2">
+            <FiUser size={14} />
+            <span>Mechanic: {request.mechanic.firstName} {request.mechanic.lastName}</span>
+            {request.mechanic.phone && (
+              <>
+                <FiPhone size={14} className="ml-2" />
+                <span>{request.mechanic.phone}</span>
+              </>
+            )}
+          </div>
+        )}
+        
+        <div className="flex items-center gap-2">
+          <FiMapPin size={14} />
+          <span className="truncate">{request.address}</span>
+        </div>
+        
+        <div className="flex items-center gap-2">
+          <FiClock size={14} />
+          <span>Requested {formatTimeAgo(request.createdAt)}</span>
+        </div>
+
+        {/* Cost display for completed requests */}
+        {request.cost && request.status === 'COMPLETED' && (
+          <div className="flex items-center gap-2 text-green-600 font-medium">
+            <span>Total Cost: ₹{request.cost.toFixed(2)}</span>
+          </div>
+        )}
+      </div>
+      
+      {request.description && (
+        <p className="text-sm text-gray-700 mt-4 p-3 bg-gray-50 rounded">{request.description}</p>
+      )}
+      
+      <div className="flex gap-2 mt-4">
+        <button
+          onClick={() => handleViewRequest(request)}
+          className="flex items-center gap-1 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded text-sm"
+        >
+          <FiEye size={14} />
+          View Details
         </button>
-        {[...Array(totalPages)].map((_, i) => (
-            <button key={i} onClick={() => onPageChange(i + 1)} className={`px-4 py-2 rounded-md font-semibold text-sm ${currentPage === i + 1 ? 'bg-blue-600 text-white shadow-sm' : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'}`}>
-                {i + 1}
-            </button>
-        ))}
-        <button onClick={() => onPageChange(currentPage + 1)} disabled={currentPage === totalPages} className="px-3 py-2 rounded-md bg-white border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed">
-            <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-        </button>
+        
+        {(request.status === 'PENDING' || request.status === 'ACCEPTED') && (
+          <button
+            onClick={() => handleCancelRequest(request.id)}
+            className="flex items-center gap-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded text-sm"
+          >
+            <FiX size={14} />
+            Cancel
+          </button>
+        )}
+
+        {request.status === 'REJECTED' && (
+          <button
+            onClick={() => window.location.href = '/dashboard/new-request'}
+            className="flex items-center gap-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm"
+          >
+            <FiPlus size={14} />
+            Create New Request
+          </button>
+        )}
+      </div>
     </div>
-)
+  );
 
-// --- Main Component ---
-const Dashboard = () => {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('All');
-  const [sortBy, setSortBy] = useState('Nearby');
-  const [viewMode, setViewMode] = useState('List');
-  const [currentPage, setCurrentPage] = useState(1);
-  
-  const ITEMS_PER_PAGE = viewMode === 'List' ? 4 : 6;
-
-  const filteredWorkshops = useMemo(() => {
-    return allWorkshops
-      .filter(workshop => {
-        const matchesSearch = workshop.name.toLowerCase().includes(searchQuery.toLowerCase());
-        const matchesStatus = statusFilter === 'All' || workshop.status === statusFilter;
-        return matchesSearch && matchesStatus;
-      })
-      .sort((a, b) => {
-        if (sortBy === 'Nearby') return a.distance - b.distance;
-        if (sortBy === 'Most Rated') return b.rating - a.rating;
-        return 0;
-      });
-  }, [searchQuery, statusFilter, sortBy]);
-  
-  const totalPages = Math.ceil(filteredWorkshops.length / ITEMS_PER_PAGE);
-  const paginatedWorkshops = filteredWorkshops.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+  if (loading && serviceRequests.length === 0) {
+    return (
+      <Layout>
+        <div className="bg-gray-50 min-h-screen p-4 sm:p-6 lg:p-8">
+          <div className="max-w-6xl mx-auto">
+            <div className="flex items-center justify-center h-64">
+              <div className="text-center">
+                <FiRefreshCw className="animate-spin mx-auto mb-4 text-blue-600" size={32} />
+                <p className="text-gray-600">Loading your service requests...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
-      <div className="bg-gray-50 min-h-screen">
-        <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-          
-          <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm mb-8">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-center">
-              <div className="lg:col-span-1">
-                <label htmlFor="search" className="block text-sm font-medium text-gray-700 mb-1">Search by name</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <svg className="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" /></svg>
+      <div className="bg-gray-50 min-h-screen p-4 sm:p-6 lg:p-8">
+        <div className="max-w-6xl mx-auto">
+          {/* Notifications */}
+          <div className="fixed top-4 right-4 z-50 space-y-2">
+            {notifications.map(notification => (
+              <div
+                key={notification.id}
+                className={`p-3 rounded-lg shadow-lg max-w-sm ${
+                  notification.type === 'success' ? 'bg-green-600' :
+                  notification.type === 'error' ? 'bg-red-600' : 'bg-blue-600'
+                } text-white`}
+              >
+                <div className="flex items-center gap-2">
+                  {notification.type === 'error' && <FiAlertCircle size={16} />}
+                  {notification.type === 'success' && <FiCheck size={16} />}
+                  <p className="text-sm">{notification.message}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Service Request Modal */}
+          {showRequestModal && selectedRequest && (
+            <ServiceRequestModal
+              isOpen={showRequestModal}
+              onClose={() => setShowRequestModal(false)}
+              request={selectedRequest}
+              showCustomerView={true}
+            />
+          )}
+
+          {/* Header */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+            <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">My Service Requests</h1>
+                <p className="text-gray-600">Track and manage your vehicle service requests</p>
+              </div>
+              
+              <div className="flex items-center gap-3">
+                <select 
+                  value={filters.status}
+                  onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value }))}
+                  className="bg-white border border-gray-300 rounded-md py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">All Status</option>
+                  {Object.entries(SERVICE_STATUS).map(([key, value]) => (
+                    <option key={key} value={key}>{value.label}</option>
+                  ))}
+                </select>
+                
+                <button 
+                  onClick={fetchServiceRequests}
+                  disabled={loading}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-md transition-colors"
+                >
+                  <FiRefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+                  <span>Refresh</span>
+                </button>
+
+                <button 
+                  onClick={() => window.location.href = '/dashboard/new-request'}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md transition-colors"
+                >
+                  <FiPlus size={16} />
+                  <span>New Request</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Error Display */}
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-lg mb-6 flex items-center gap-2">
+              <FiAlertCircle />
+              <span>{error}</span>
+              <button 
+                onClick={() => setError(null)}
+                className="ml-auto hover:bg-red-100 p-1 rounded"
+              >
+                <FiX />
+              </button>
+            </div>
+          )}
+
+          {/* Status Summary Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            {Object.entries(SERVICE_STATUS).map(([status, config]) => {
+              const count = serviceRequests.filter(req => req.status === status).length;
+              return (
+                <div key={status} className="bg-white rounded-lg p-4 border border-gray-200">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">{config.label}</p>
+                      <p className="text-2xl font-bold text-gray-900">{count}</p>
+                    </div>
+                    <div className={`p-2 rounded-full ${config.bgColor}`}>
+                      {getStatusIcon(status)}
+                    </div>
                   </div>
-                  <input id="search" type="text" placeholder="e.g. Quick Fix Auto" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-gray-50 border-gray-300 rounded-md py-2 pl-10 pr-3 focus:ring-blue-500 focus:border-blue-500"/>
                 </div>
-              </div>
-              <div>
-                <label htmlFor="status" className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                <select id="status" value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="w-full bg-gray-50 border-gray-300 rounded-md py-2 px-3 focus:ring-blue-500 focus:border-blue-500">
-                  <option value="All">All Statuses</option>
-                  <option value="Open">Open Now</option>
-                  <option value="Closed">Closed</option>
-                </select>
-              </div>
-              <div>
-                <label htmlFor="sort" className="block text-sm font-medium text-gray-700 mb-1">Sort by</label>
-                <select id="sort" value={sortBy} onChange={e => setSortBy(e.target.value)} className="w-full bg-gray-50 border-gray-300 rounded-md py-2 px-3 focus:ring-blue-500 focus:border-blue-500">
-                  <option>Nearby</option>
-                  <option>Most Rated</option>
-                </select>
-              </div>
-            </div>
+              );
+            })}
           </div>
           
-          <div className="flex justify-between items-center mb-6">
-            <p className="text-sm text-gray-600">
-                Showing <span className="font-bold">{paginatedWorkshops.length}</span> of <span className="font-bold">{filteredWorkshops.length}</span> results
-            </p>
-            <div className="flex items-center gap-2 p-1 bg-gray-200 rounded-lg">
-                <button onClick={() => setViewMode('List')} className={`p-2 rounded-md ${viewMode === 'List' ? 'bg-white shadow-sm' : 'hover:bg-gray-300'}`}>
-                    <svg className={`w-5 h-5 ${viewMode === 'List' ? 'text-blue-600' : 'text-gray-600'}`} fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" /></svg>
+          {/* Service Requests List */}
+          <div className="space-y-4">
+            {serviceRequests.length === 0 ? (
+              <div className="bg-white rounded-lg p-12 text-center border border-gray-200">
+                <FiMapPin size={48} className="mx-auto mb-4 text-gray-400" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">No Service Requests</h3>
+                <p className="text-gray-600 mb-4">You haven't created any service requests yet.</p>
+                <button 
+                  onClick={() => window.location.href = '/dashboard/new-request'}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md"
+                >
+                  <FiPlus size={16} />
+                  Create Your First Request
                 </button>
-                <button onClick={() => setViewMode('Card')} className={`p-2 rounded-md ${viewMode === 'Card' ? 'bg-white shadow-sm' : 'hover:bg-gray-300'}`}>
-                    <svg className={`w-5 h-5 ${viewMode === 'Card' ? 'text-blue-600' : 'text-gray-600'}`} fill="currentColor" viewBox="0 0 20 20"><path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
-                </button>
+              </div>
+            ) : (
+              serviceRequests.map(request => (
+                <RequestCard key={request.id} request={request} />
+              ))
+            )}
+          </div>
+
+          {/* Pagination */}
+          {pagination.pages > 1 && (
+            <div className="flex items-center justify-center gap-2 mt-8">
+              <button
+                onClick={() => setPagination(prev => ({ ...prev, page: Math.max(1, prev.page - 1) }))}
+                disabled={pagination.page === 1}
+                className="px-4 py-2 bg-white border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed rounded-md"
+              >
+                Previous
+              </button>
+              
+              <span className="px-4 py-2 text-gray-700">
+                Page {pagination.page} of {pagination.pages}
+              </span>
+              
+              <button
+                onClick={() => setPagination(prev => ({ ...prev, page: Math.min(prev.pages, prev.page + 1) }))}
+                disabled={pagination.page === pagination.pages}
+                className="px-4 py-2 bg-white border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed rounded-md"
+              >
+                Next
+              </button>
             </div>
-          </div>
+          )}
 
-          {/* ---vvv THIS IS THE ONLY SECTION THAT HAS CHANGED vvv--- */}
-          <div className={viewMode === 'List' ? 'space-y-4' : 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6'}>
-              {paginatedWorkshops.length > 0 ? (
-                paginatedWorkshops.map(workshop => (
-                  // 2. WRAP THE WorkshopItem IN A LINK
-                  <Link to={`/workshop/${workshop.id}`} key={workshop.id} className="block">
-                    <WorkshopItem workshop={workshop} viewMode={viewMode} />
-                  </Link>
-                ))
-              ) : (
-                <div className="col-span-full text-center py-20 bg-white rounded-lg shadow-sm">
-                    <h3 className="text-xl font-semibold text-gray-700">No workshops found</h3>
-                    <p className="text-gray-500 mt-2">Try adjusting your search or filter criteria.</p>
+          {/* Help Section for Rejected Requests */}
+          {serviceRequests.some(req => req.status === 'REJECTED') && (
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-6 mt-6">
+              <div className="flex items-start gap-3">
+                <FiAlertCircle className="text-orange-500 mt-1" size={20} />
+                <div>
+                  <h3 className="font-semibold text-orange-800 mb-2">Some requests were rejected</h3>
+                  <p className="text-orange-700 text-sm mb-3">
+                    Don't worry! This can happen for various reasons like mechanic availability, 
+                    location distance, or service specialization. You can:
+                  </p>
+                  <ul className="text-orange-700 text-sm space-y-1 ml-4">
+                    <li>• Create a new service request</li>
+                    <li>• Try different service types or times</li>
+                    <li>• Contact mechanics directly</li>
+                    <li>• Check for other available mechanics nearby</li>
+                  </ul>
                 </div>
-              )}
-          </div>
-          {/* ---^^^ THIS IS THE ONLY SECTION THAT HAS CHANGED ^^^--- */}
-
-          {totalPages > 1 && (
-              <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
+              </div>
+            </div>
           )}
         </div>
       </div>

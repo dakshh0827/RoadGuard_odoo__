@@ -1,171 +1,54 @@
-// server/src/controllers/mechanicController.js - FIXED VERSION
+// server/src/controllers/mechanicController.js - FIXED REJECT FUNCTIONALITY
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-// Get all available service requests for mechanics
-export const getAvailableServiceRequests = async (req, res) => {
-  try {
-    const mechanicId = req.user.id;
-    const { 
-      page = 1, 
-      limit = 10, 
-      serviceType,
-      vehicleType,
-      maxDistance = 50 // km
-    } = req.query;
-    
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    
-    console.log('🔍 Getting available requests for mechanic:', mechanicId);
-    
-    // Get mechanic's location
-    const mechanic = await prisma.user.findUnique({
-      where: { id: mechanicId },
-      select: { latitude: true, longitude: true, firstName: true, lastName: true }
-    });
-
-    console.log('🔍 Mechanic location:', mechanic);
-
-    if (!mechanic?.latitude || !mechanic?.longitude) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please update your location to view nearby service requests',
-        data: {
-          serviceRequests: [],
-          mechanicLocation: null,
-          requiresLocationUpdate: true
-        }
-      });
-    }
-
-    // Build filter conditions - Only show PENDING requests that are unassigned
-    const where = {
-      status: 'PENDING',
-      mechanicId: null, // Only unassigned requests
-    };
-
-    if (serviceType && serviceType.trim()) {
-      where.serviceType = serviceType.toUpperCase();
-    }
-
-    if (vehicleType && vehicleType.trim()) {
-      where.vehicleType = vehicleType.toUpperCase();
-    }
-
-    console.log('🔍 Fetching available requests with filter:', where);
-
-    // Get all available requests first
-    const allAvailableRequests = await prisma.serviceRequest.findMany({
-      where,
-      include: {
-        endUser: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            phone: true,
-            email: true
-          }
-        }
-      },
-      orderBy: { createdAt: 'desc' }
-    });
-
-    console.log(`🔍 Found ${allAvailableRequests.length} available requests from database`);
-
-    // Calculate distance for each request and filter by maxDistance
-    const requestsWithDistance = allAvailableRequests.map(request => {
-      const distance = calculateDistance(
-        mechanic.latitude,
-        mechanic.longitude,
-        request.latitude,
-        request.longitude
-      );
-      
-      return {
-        ...request,
-        distance: Math.round(distance * 100) / 100, // Round to 2 decimal places
-        estimatedTravelTime: Math.round(distance / 40 * 60) // Assume 40km/h average speed
-      };
-    }).filter(request => request.distance <= parseFloat(maxDistance));
-
-    // Sort by distance (nearest first)
-    requestsWithDistance.sort((a, b) => a.distance - b.distance);
-
-    // Apply pagination to the filtered and sorted results
-    const paginatedRequests = requestsWithDistance.slice(skip, skip + parseInt(limit));
-
-    console.log(`🔍 Returning ${paginatedRequests.length} requests within ${maxDistance}km (page ${page})`);
-
-    res.json({
-      success: true,
-      data: {
-        serviceRequests: paginatedRequests,
-        pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
-          total: requestsWithDistance.length,
-          pages: Math.ceil(requestsWithDistance.length / parseInt(limit))
-        },
-        mechanicLocation: {
-          latitude: mechanic.latitude,
-          longitude: mechanic.longitude
-        },
-        stats: {
-          totalAvailableInSystem: allAvailableRequests.length,
-          totalNearby: requestsWithDistance.length,
-          searchRadius: `${maxDistance}km`
-        }
-      }
-    });
-
-  } catch (error) {
-    console.error('❌ Error fetching available service requests:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch available service requests',
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
-    });
-  }
-};
-
-// Get all service requests visible to mechanics - MODIFIED VERSION
+// Get all service requests visible to mechanics (NOT filtered by mechanic ID)
 export const getMechanicServiceRequests = async (req, res) => {
   try {
     const mechanicId = req.user.id;
     const { 
       page = 1, 
       limit = 10, 
-      status 
+      status,
+      serviceType,
+      vehicleType,
+      maxDistance = 100
     } = req.query;
     
     const skip = (parseInt(page) - 1) * parseInt(limit);
     
-    console.log('🔍 Fetching all service requests for mechanic:', mechanicId);
-    console.log('🔍 Query params:', { page, limit, status });
+    console.log('🔍 Fetching ALL service requests for mechanic dashboard:', mechanicId);
+    console.log('🔍 Query params:', { page, limit, status, serviceType, vehicleType, maxDistance });
     
-    // Get comprehensive stats for debugging
-    const allStats = await prisma.serviceRequest.groupBy({
-      by: ['status'],
-      _count: {
-        status: true
-      }
+    // Get mechanic's location for distance calculations
+    const mechanic = await prisma.user.findUnique({
+      where: { id: mechanicId },
+      select: { latitude: true, longitude: true, firstName: true, lastName: true }
     });
 
-    console.log('📊 System-wide request stats:', allStats);
-
-    // Build where clause - NO mechanicId filter, show ALL requests
+    // Build where clause - Show ALL requests regardless of assignment
     const where = {};
-
+    
     // Add status filter if provided
     if (status && status.trim()) {
       where.status = status.toUpperCase();
     }
+    
+    // Add service type filter if provided
+    if (serviceType && serviceType.trim()) {
+      where.serviceType = serviceType.toUpperCase();
+    }
+    
+    // Add vehicle type filter if provided
+    if (vehicleType && vehicleType.trim()) {
+      where.vehicleType = vehicleType.toUpperCase();
+    }
 
     console.log('🔍 Using where clause (all requests):', where);
 
-    const serviceRequests = await prisma.serviceRequest.findMany({
+    // Get all requests matching filters
+    const allRequests = await prisma.serviceRequest.findMany({
       where,
       include: {
         endUser: {
@@ -187,25 +70,31 @@ export const getMechanicServiceRequests = async (req, res) => {
         }
       },
       orderBy: [
-        { status: 'asc' },
+        { status: 'asc' }, // PENDING first, then others
         { createdAt: 'desc' }
-      ],
-      skip,
-      take: parseInt(limit)
+      ]
     });
 
-    console.log(`🔍 Found ${serviceRequests.length} total service requests`);
+    console.log(`🔍 Found ${allRequests.length} total service requests from database`);
 
-    // Get mechanic's location for distance calculations
-    const mechanic = await prisma.user.findUnique({
-      where: { id: mechanicId },
-      select: { latitude: true, longitude: true }
-    });
+    // Add distance calculations and mechanic interaction flags
+    let enrichedRequests = allRequests.map(request => {
+      const baseRequest = {
+        ...request,
+        canAccept: request.status === 'PENDING' && !request.mechanicId,
+        canReject: request.status === 'PENDING',
+        isAssignedToMe: request.mechanicId === mechanicId,
+        isAvailableToMe: request.status === 'PENDING' && !request.mechanicId,
+        mechanicActions: {
+          canAccept: request.status === 'PENDING' && !request.mechanicId,
+          canReject: request.status === 'PENDING',
+          canUpdateStatus: request.mechanicId === mechanicId && ['ACCEPTED', 'IN_PROGRESS'].includes(request.status),
+          canComplete: request.mechanicId === mechanicId && request.status === 'IN_PROGRESS'
+        }
+      };
 
-    // Add distance calculations if mechanic location is available
-    let enrichedRequests = serviceRequests;
-    if (mechanic?.latitude && mechanic?.longitude) {
-      enrichedRequests = serviceRequests.map(request => {
+      // Add distance if mechanic location is available
+      if (mechanic?.latitude && mechanic?.longitude) {
         const distance = calculateDistance(
           mechanic.latitude,
           mechanic.longitude,
@@ -213,51 +102,59 @@ export const getMechanicServiceRequests = async (req, res) => {
           request.longitude
         );
         
-        return {
-          ...request,
-          distance: Math.round(distance * 100) / 100,
-          estimatedTravelTime: Math.round(distance / 40 * 60),
-          isNearby: distance <= 50 // Within 50km
-        };
-      });
+        baseRequest.distance = Math.round(distance * 100) / 100;
+        baseRequest.estimatedTravelTime = Math.round(distance / 40 * 60);
+        baseRequest.isNearby = distance <= parseFloat(maxDistance);
+      }
+
+      return baseRequest;
+    });
+
+    // Filter by distance if mechanic location is available and maxDistance is specified
+    if (mechanic?.latitude && mechanic?.longitude && maxDistance) {
+      enrichedRequests = enrichedRequests.filter(request => 
+        request.distance <= parseFloat(maxDistance)
+      );
     }
 
-    // Get total count for pagination
-    const total = await prisma.serviceRequest.count({ where });
+    // Apply pagination
+    const paginatedRequests = enrichedRequests.slice(skip, skip + parseInt(limit));
 
-    // Calculate stats for this mechanic's involvement
-    const mechanicInvolvedCount = serviceRequests.filter(req => req.mechanicId === mechanicId).length;
-    const availableCount = serviceRequests.filter(req => req.status === 'PENDING' && !req.mechanicId).length;
+    // Get stats
+    const stats = {
+      total: enrichedRequests.length,
+      pending: enrichedRequests.filter(r => r.status === 'PENDING').length,
+      accepted: enrichedRequests.filter(r => r.status === 'ACCEPTED').length,
+      inProgress: enrichedRequests.filter(r => r.status === 'IN_PROGRESS').length,
+      completed: enrichedRequests.filter(r => r.status === 'COMPLETED').length,
+      availableToAccept: enrichedRequests.filter(r => r.canAccept).length,
+      assignedToMe: enrichedRequests.filter(r => r.isAssignedToMe).length
+    };
 
-    console.log(`🔍 Pagination info: total=${total}, page=${page}, limit=${limit}`);
-    console.log(`🔍 Mechanic involvement: ${mechanicInvolvedCount} assigned, ${availableCount} available`);
+    console.log(`🔍 Returning ${paginatedRequests.length} requests (page ${page})`);
+    console.log('📊 Stats:', stats);
 
     res.json({
       success: true,
       data: {
-        serviceRequests: enrichedRequests,
+        serviceRequests: paginatedRequests,
         pagination: {
           page: parseInt(page),
           limit: parseInt(limit),
-          total,
-          pages: Math.ceil(total / parseInt(limit))
+          total: enrichedRequests.length,
+          pages: Math.ceil(enrichedRequests.length / parseInt(limit))
         },
-        stats: {
-          byStatus: allStats,
-          total: total,
-          mechanicAssigned: mechanicInvolvedCount,
-          availableToAccept: availableCount
-        },
+        stats,
         mechanicLocation: mechanic?.latitude && mechanic?.longitude ? {
           latitude: mechanic.latitude,
           longitude: mechanic.longitude
         } : null,
-        debug: process.env.NODE_ENV === 'development' ? {
-          mechanicId,
-          whereClause: where,
-          queryParams: { page, limit, status },
-          mechanicHasLocation: !!(mechanic?.latitude && mechanic?.longitude)
-        } : undefined
+        filters: {
+          status: status || null,
+          serviceType: serviceType || null,
+          vehicleType: vehicleType || null,
+          maxDistance: parseFloat(maxDistance)
+        }
       }
     });
 
@@ -271,14 +168,139 @@ export const getMechanicServiceRequests = async (req, res) => {
   }
 };
 
-// Enhanced version with better error handling and logging
+// Get available service requests (PENDING only) - This can be used for "Available" tab
+export const getAvailableServiceRequests = async (req, res) => {
+  try {
+    const mechanicId = req.user.id;
+    const { 
+      page = 1, 
+      limit = 20, 
+      serviceType,
+      vehicleType,
+      maxDistance = 50
+    } = req.query;
+    
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    
+    console.log('🔍 Getting ONLY available (PENDING) requests for mechanic:', mechanicId);
+    
+    // Get mechanic's location
+    const mechanic = await prisma.user.findUnique({
+      where: { id: mechanicId },
+      select: { latitude: true, longitude: true }
+    });
+
+    if (!mechanic?.latitude || !mechanic?.longitude) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please update your location to view nearby service requests',
+        data: {
+          serviceRequests: [],
+          mechanicLocation: null,
+          requiresLocationUpdate: true
+        }
+      });
+    }
+
+    // Build filter - ONLY PENDING and unassigned requests
+    const where = {
+      status: 'PENDING',
+      mechanicId: null
+    };
+
+    if (serviceType && serviceType.trim()) {
+      where.serviceType = serviceType.toUpperCase();
+    }
+
+    if (vehicleType && vehicleType.trim()) {
+      where.vehicleType = vehicleType.toUpperCase();
+    }
+
+    console.log('🔍 Fetching available requests with filter:', where);
+
+    const availableRequests = await prisma.serviceRequest.findMany({
+      where,
+      include: {
+        endUser: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            phone: true,
+            email: true
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    console.log(`🔍 Found ${availableRequests.length} available requests`);
+
+    // Calculate distance and filter by maxDistance
+    const requestsWithDistance = availableRequests.map(request => {
+      const distance = calculateDistance(
+        mechanic.latitude,
+        mechanic.longitude,
+        request.latitude,
+        request.longitude
+      );
+      
+      return {
+        ...request,
+        distance: Math.round(distance * 100) / 100,
+        estimatedTravelTime: Math.round(distance / 40 * 60),
+        canAccept: true, // All available requests can be accepted
+        canReject: true  // All available requests can be rejected
+      };
+    }).filter(request => request.distance <= parseFloat(maxDistance));
+
+    // Sort by distance (nearest first)
+    requestsWithDistance.sort((a, b) => a.distance - b.distance);
+
+    // Apply pagination
+    const paginatedRequests = requestsWithDistance.slice(skip, skip + parseInt(limit));
+
+    console.log(`🔍 Returning ${paginatedRequests.length} available requests within ${maxDistance}km`);
+
+    res.json({
+      success: true,
+      data: {
+        serviceRequests: paginatedRequests,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total: requestsWithDistance.length,
+          pages: Math.ceil(requestsWithDistance.length / parseInt(limit))
+        },
+        mechanicLocation: {
+          latitude: mechanic.latitude,
+          longitude: mechanic.longitude
+        },
+        stats: {
+          totalAvailable: requestsWithDistance.length,
+          searchRadius: `${maxDistance}km`
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching available service requests:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch available service requests',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+};
+
+// Accept service request (any mechanic can accept any PENDING request)
 export const acceptServiceRequest = async (req, res) => {
   try {
     const { id } = req.params;
     const mechanicId = req.user.id;
-
-    console.log('🔍 Accepting service request:', id, 'by mechanic:', mechanicId);
-
+    
+    console.log('🔍 Any mechanic accepting request:', id, 'by mechanic:', mechanicId);
+    
     // Validate ObjectId format
     if (!id.match(/^[0-9a-fA-F]{24}$/)) {
       return res.status(400).json({
@@ -287,7 +309,7 @@ export const acceptServiceRequest = async (req, res) => {
       });
     }
 
-    // Check if request exists and is still available
+    // Find and verify the request is available for acceptance
     const existingRequest = await prisma.serviceRequest.findUnique({
       where: { id },
       include: {
@@ -314,10 +336,11 @@ export const acceptServiceRequest = async (req, res) => {
       requestId: existingRequest.requestId
     });
 
+    // Only PENDING requests without assigned mechanics can be accepted
     if (existingRequest.status !== 'PENDING') {
       return res.status(400).json({
         success: false,
-        message: `This service request is ${existingRequest.status.toLowerCase()} and no longer available`
+        message: `This service request is ${existingRequest.status.toLowerCase()} and no longer available for acceptance`
       });
     }
 
@@ -328,17 +351,14 @@ export const acceptServiceRequest = async (req, res) => {
       });
     }
 
-    // Accept the request atomically
+    // Accept the request
     const updatedRequest = await prisma.serviceRequest.update({
-      where: { 
-        id,
-        status: 'PENDING', // Additional safety check
-        mechanicId: null // Additional safety check
-      },
+      where: { id },
       data: {
         mechanicId,
         status: 'ACCEPTED',
-        acceptedAt: new Date()
+        acceptedAt: new Date(),
+        updatedAt: new Date()
       },
       include: {
         endUser: {
@@ -377,11 +397,10 @@ export const acceptServiceRequest = async (req, res) => {
       });
     } catch (logError) {
       console.warn('⚠️ Failed to log activity:', logError);
-      // Don't fail the main operation if logging fails
     }
 
-    console.log('✅ Service request accepted successfully');
-
+    console.log('✅ Service request accepted successfully by any mechanic');
+    
     res.json({
       success: true,
       message: 'Service request accepted successfully',
@@ -391,7 +410,6 @@ export const acceptServiceRequest = async (req, res) => {
   } catch (error) {
     console.error('❌ Error accepting service request:', error);
     
-    // Handle specific Prisma errors
     if (error.code === 'P2025') {
       return res.status(404).json({
         success: false,
@@ -407,7 +425,122 @@ export const acceptServiceRequest = async (req, res) => {
   }
 };
 
-// Update service request status (by mechanic) - Enhanced version
+// FIXED: Reject service request (any mechanic can reject any PENDING request)
+export const rejectServiceRequest = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+    const mechanicId = req.user.id;
+    
+    console.log('🔍 Any mechanic rejecting request:', id, 'by mechanic:', mechanicId);
+    console.log('🔍 Reject reason:', reason);
+    
+    // Validate ObjectId format
+    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid request ID format'
+      });
+    }
+
+    // Find and verify the request can be rejected
+    const existingRequest = await prisma.serviceRequest.findUnique({
+      where: { id },
+      include: {
+        endUser: {
+          select: {
+            firstName: true,
+            lastName: true,
+            phone: true
+          }
+        }
+      }
+    });
+
+    if (!existingRequest) {
+      return res.status(404).json({
+        success: false,
+        message: 'Service request not found'
+      });
+    }
+
+    // Only PENDING requests can be rejected
+    if (existingRequest.status !== 'PENDING') {
+      return res.status(400).json({
+        success: false,
+        message: `This service request is ${existingRequest.status.toLowerCase()} and cannot be rejected`
+      });
+    }
+
+    // FIXED: Use only fields that exist in the schema
+    const updatedRequest = await prisma.serviceRequest.update({
+      where: { id },
+      data: {
+        status: 'REJECTED',
+        mechanicNotes: reason || 'Request rejected by mechanic',
+        // Remove rejectedAt and rejectedBy fields as they don't exist in schema
+        updatedAt: new Date()
+      },
+      include: {
+        endUser: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            phone: true,
+            email: true
+          }
+        }
+      }
+    });
+
+    // Log activity with rejection details
+    try {
+      await prisma.activityLog.create({
+        data: {
+          action: 'request_rejected',
+          userId: mechanicId,
+          details: {
+            requestId: updatedRequest.requestId,
+            customerId: existingRequest.endUserId,
+            serviceType: existingRequest.serviceType,
+            reason: reason || 'No reason provided',
+            rejectedBy: mechanicId,
+            rejectedAt: new Date().toISOString()
+          }
+        }
+      });
+    } catch (logError) {
+      console.warn('⚠️ Failed to log activity:', logError);
+    }
+
+    console.log('✅ Service request rejected successfully by any mechanic');
+    
+    res.json({
+      success: true,
+      message: 'Service request rejected successfully',
+      data: updatedRequest
+    });
+
+  } catch (error) {
+    console.error('❌ Error rejecting service request:', error);
+    
+    if (error.code === 'P2025') {
+      return res.status(404).json({
+        success: false,
+        message: 'Service request not found or no longer available'
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to reject service request',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+};
+
+// Update service request status (by mechanic)
 export const updateServiceRequestStatus = async (req, res) => {
   try {
     const { id } = req.params;
@@ -424,7 +557,7 @@ export const updateServiceRequestStatus = async (req, res) => {
       });
     }
 
-    const validStatuses = ['ACCEPTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'];
+    const validStatuses = ['ACCEPTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'REJECTED'];
     if (!validStatuses.includes(status.toUpperCase())) {
       return res.status(400).json({
         success: false,
@@ -432,33 +565,39 @@ export const updateServiceRequestStatus = async (req, res) => {
       });
     }
 
-    // Validate that mechanic owns this request
-    const serviceRequest = await prisma.serviceRequest.findFirst({
-      where: {
-        id,
-        mechanicId
-      }
+    // Find the service request first
+    const serviceRequest = await prisma.serviceRequest.findUnique({
+      where: { id }
     });
 
     if (!serviceRequest) {
       return res.status(404).json({
         success: false,
-        message: 'Service request not found or not assigned to you'
+        message: 'Service request not found'
+      });
+    }
+
+    // Validate ownership for certain operations
+    const newStatus = status.toUpperCase();
+    if (['IN_PROGRESS', 'COMPLETED'].includes(newStatus) && serviceRequest.mechanicId !== mechanicId) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only update service requests assigned to you'
       });
     }
 
     // Validate status transition
     const currentStatus = serviceRequest.status;
-    const newStatus = status.toUpperCase();
-    
     const validTransitions = {
+      'PENDING': ['ACCEPTED', 'REJECTED', 'CANCELLED'],
       'ACCEPTED': ['IN_PROGRESS', 'CANCELLED'],
       'IN_PROGRESS': ['COMPLETED', 'CANCELLED'],
-      'COMPLETED': [], // Final state
-      'CANCELLED': []  // Final state
+      'COMPLETED': [],
+      'CANCELLED': [],
+      'REJECTED': []
     };
 
-    if (currentStatus !== 'PENDING' && !validTransitions[currentStatus]?.includes(newStatus)) {
+    if (!validTransitions[currentStatus]?.includes(newStatus)) {
       return res.status(400).json({
         success: false,
         message: `Cannot change status from ${currentStatus} to ${newStatus}`
@@ -476,8 +615,14 @@ export const updateServiceRequestStatus = async (req, res) => {
     }
 
     // Handle status-specific updates
+    if (newStatus === 'ACCEPTED') {
+      updateData.mechanicId = mechanicId;
+      updateData.acceptedAt = new Date();
+    }
+
     if (newStatus === 'IN_PROGRESS') {
-      updateData.startedAt = new Date();
+      // Note: If there's no startedAt field, you might want to use a different field or add it to schema
+      // updateData.startedAt = new Date();
     }
 
     if (newStatus === 'COMPLETED') {
@@ -533,6 +678,7 @@ export const updateServiceRequestStatus = async (req, res) => {
             previousStatus: currentStatus,
             newStatus: newStatus,
             cost: cost || null,
+            reason: mechanicNotes || null,
             updatedAt: new Date().toISOString()
           }
         }
@@ -545,12 +691,20 @@ export const updateServiceRequestStatus = async (req, res) => {
 
     res.json({
       success: true,
-      message: `Service request ${newStatus.toLowerCase()} successfully`,
+      message: `Service request ${newStatus.toLowerCase().replace('_', ' ')} successfully`,
       data: updatedRequest
     });
 
   } catch (error) {
     console.error('❌ Error updating service request:', error);
+    
+    if (error.code === 'P2025') {
+      return res.status(404).json({
+        success: false,
+        message: 'Service request not found or no longer available'
+      });
+    }
+
     res.status(500).json({
       success: false,
       message: 'Failed to update service request',
@@ -559,7 +713,7 @@ export const updateServiceRequestStatus = async (req, res) => {
   }
 };
 
-// Get service request details - Enhanced version
+// Get service request details
 export const getServiceRequestDetails = async (req, res) => {
   try {
     const { id } = req.params;
@@ -575,14 +729,9 @@ export const getServiceRequestDetails = async (req, res) => {
       });
     }
 
-    const serviceRequest = await prisma.serviceRequest.findFirst({
-      where: {
-        id,
-        OR: [
-          { mechanicId }, // Assigned to this mechanic
-          { status: 'PENDING', mechanicId: null } // Or available for acceptance
-        ]
-      },
+    // Allow access to all requests, not just assigned ones
+    const serviceRequest = await prisma.serviceRequest.findUnique({
+      where: { id },
       include: {
         endUser: {
           select: {
@@ -607,7 +756,7 @@ export const getServiceRequestDetails = async (req, res) => {
     if (!serviceRequest) {
       return res.status(404).json({
         success: false,
-        message: 'Service request not found or not accessible'
+        message: 'Service request not found'
       });
     }
 
@@ -646,7 +795,7 @@ export const getServiceRequestDetails = async (req, res) => {
   }
 };
 
-// Update mechanic location - Enhanced version
+// Update mechanic location
 export const updateMechanicLocation = async (req, res) => {
   try {
     const mechanicId = req.user.id;
