@@ -1,12 +1,15 @@
-// server/src/middlewares/auth.js - COMPREHENSIVE MERGED VERSION
+// server/src/middlewares/auth.js - INTEGRATED VERSION
 import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-// ----------------- Authentication Middleware -----------------
+// ----------------- Core Authentication Middleware -----------------
 
-// Primary JWT Authentication middleware (recommended for all API routes)
+/**
+ * Primary JWT Authentication middleware - recommended for all API routes
+ * Combines token verification with fresh user data retrieval
+ */
 export const authenticateToken = async (req, res, next) => {
   try {
     const authHeader = req.headers['authorization'];
@@ -30,9 +33,8 @@ export const authenticateToken = async (req, res, next) => {
       });
     }
 
-    // Verify token with fallback secret
-    const jwtSecret = process.env.JWT_SECRET || 'your-secret-key';
-    const decoded = jwt.verify(token, jwtSecret);
+    // Verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const userId = decoded.id || decoded.userId; // Support both formats
 
     console.log('🔍 Auth Middleware - Decoded token:', { 
@@ -48,7 +50,7 @@ export const authenticateToken = async (req, res, next) => {
       });
     }
 
-    // Get user from database with comprehensive fields
+    // Get fresh user data from database with comprehensive fields
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -72,14 +74,14 @@ export const authenticateToken = async (req, res, next) => {
     if (!user) {
       return res.status(401).json({
         success: false,
-        message: 'User not found'
+        message: 'Invalid token - user not found'
       });
     }
 
     if (!user.isActive) {
       return res.status(401).json({
         success: false,
-        message: 'Account is deactivated'
+        message: 'Account has been deactivated'
       });
     }
 
@@ -88,112 +90,60 @@ export const authenticateToken = async (req, res, next) => {
     next();
 
   } catch (error) {
-    console.error('❌ Auth Middleware - Error:', error);
-    
-    if (error.name === 'JsonWebTokenError') {
-      return res.status(401).json({ 
-        success: false, 
-        message: 'Invalid token' 
-      });
-    }
+    console.error('❌ Token verification error:', error);
     
     if (error.name === 'TokenExpiredError') {
-      return res.status(401).json({ 
-        success: false, 
-        message: 'Token expired' 
+      return res.status(401).json({
+        success: false,
+        message: 'Token expired',
+        code: 'TOKEN_EXPIRED'
       });
     }
     
-    return res.status(500).json({ 
-      success: false, 
-      message: 'Token verification failed' 
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(403).json({
+        success: false,
+        message: 'Invalid token'
+      });
+    }
+    
+    return res.status(500).json({
+      success: false,
+      message: 'Token verification failed'
     });
   }
 };
 
-// Backward compatibility JWT middleware
-export const authenticateJWT = async (req, res, next) => {
-  try {
-    const authHeader = req.headers.authorization;
-    const token = authHeader && authHeader.split(' ')[1];
+/**
+ * Backward compatibility JWT middleware
+ * Alias for authenticateToken to support existing code
+ */
+export const authenticateJWT = authenticateToken;
 
-    if (!token) {
-      return res.status(401).json({ 
-        success: false, 
-        message: 'Access token required' 
-      });
-    }
+// ----------------- Verification Middleware -----------------
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
-    const userId = decoded.id || decoded.userId;
-
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        firstName: true,
-        lastName: true,
-        role: true,
-        isVerified: true,
-        isActive: true
-      }
-    });
-
-    if (!user) {
-      return res.status(401).json({ 
-        success: false, 
-        message: 'User not found' 
-      });
-    }
-
-    if (!user.isActive) {
-      return res.status(403).json({ 
-        success: false, 
-        message: 'Account has been deactivated' 
-      });
-    }
-
-    req.user = user;
-    next();
-  } catch (error) {
-    if (error.name === 'TokenExpiredError') {
-      return res.status(401).json({ 
-        success: false, 
-        message: 'Token expired', 
-        code: 'TOKEN_EXPIRED' 
-      });
-    }
-    if (error.name === 'JsonWebTokenError') {
-      return res.status(401).json({ 
-        success: false, 
-        message: 'Invalid token' 
-      });
-    }
-    res.status(401).json({ 
-      success: false, 
-      message: 'Authentication failed' 
-    });
-  }
-};
-
-// ----------------- Verification / Role Guards -----------------
-
-// Require verified email
+/**
+ * Require email verification
+ */
 export const requireVerified = (req, res, next) => {
-  console.log('🔍 RequireVerified - User verified:', req.user.isVerified);
+  console.log('🔍 RequireVerified - User verified:', req.user?.isVerified);
   
-  if (!req.user.isVerified) {
+  if (!req.user?.isVerified) {
     return res.status(403).json({
       success: false,
-      message: 'Please verify your email to access this feature',
+      message: 'Email verification required',
       requiresVerification: true
     });
   }
   next();
 };
 
-// Flexible role requirement middleware
+// ----------------- Role-based Authorization -----------------
+
+/**
+ * Flexible role requirement middleware
+ * @param {string|string[]} allowedRoles - Single role or array of allowed roles
+ */
 export const requireRole = (allowedRoles) => {
   return (req, res, next) => {
     if (!req.user) {
@@ -214,7 +164,7 @@ export const requireRole = (allowedRoles) => {
     if (!roles.includes(userRole)) {
       return res.status(403).json({
         success: false,
-        message: 'Insufficient permissions. This action requires role: ' + roles.join(' or '),
+        message: `${roles.length > 1 ? roles.join(' or ') : roles[0]} role required`,
         requiredRoles: roles,
         userRole: userRole
       });
@@ -223,9 +173,57 @@ export const requireRole = (allowedRoles) => {
   };
 };
 
-// Individual role middleware functions (for backward compatibility)
+// Individual role middleware functions
+export const requireAdmin = (req, res, next) => {
+  if (req.user?.role !== 'ADMIN') {
+    return res.status(403).json({
+      success: false,
+      message: 'Administrator role required'
+    });
+  }
+  next();
+};
+
+export const requireMechanic = (req, res, next) => {
+  if (req.user?.role !== 'MECHANIC') {
+    return res.status(403).json({
+      success: false,
+      message: 'Mechanic role required'
+    });
+  }
+  next();
+};
+
+export const requireCustomer = (req, res, next) => {
+  if (!['END_USER', 'CUSTOMER'].includes(req.user?.role)) {
+    return res.status(403).json({
+      success: false,
+      message: 'Customer role required'
+    });
+  }
+  next();
+};
+
+export const requireEndUser = (req, res, next) => {
+  if (req.user?.role !== 'END_USER') {
+    return res.status(403).json({
+      success: false,
+      message: 'End user role required'
+    });
+  }
+  next();
+};
+
+// Combined role requirements
+export const requireMechanicOrAdmin = requireRole(['MECHANIC', 'ADMIN']);
+export const requireEndUserOrAdmin = requireRole(['END_USER', 'ADMIN']);
+export const requireCustomerOrAdmin = requireRole(['CUSTOMER', 'END_USER', 'ADMIN']);
+
+/**
+ * Require verified end user (for service requests)
+ */
 export const requireVerifiedEndUser = (req, res, next) => {
-  if (!req.user.isVerified) {
+  if (!req.user?.isVerified) {
     return res.status(403).json({
       success: false,
       message: 'Please verify your email address to continue',
@@ -242,33 +240,30 @@ export const requireVerifiedEndUser = (req, res, next) => {
   next();
 };
 
-// Specific role middlewares
-export const requireMechanic = requireRole(['MECHANIC']);
-export const requireEndUser = requireRole(['END_USER']);
-export const requireAdmin = requireRole(['ADMIN']);
+// ----------------- Middleware Combinations -----------------
 
-// Multiple role middlewares
-export const requireMechanicOrAdmin = requireRole(['MECHANIC', 'ADMIN']);
-export const requireEndUserOrAdmin = requireRole(['END_USER', 'ADMIN']);
-export const requireCustomerOrAdmin = requireRole(['CUSTOMER', 'END_USER', 'ADMIN']);
-
-// ----------------- Predefined Middleware Combinations -----------------
-
-export const requireCustomer = [authenticateToken, requireRole(['CUSTOMER', 'END_USER'])];
-export const requireMechanicRole = [authenticateToken, requireRole(['MECHANIC'])]; 
-export const requireAdminRole = [authenticateToken, requireRole(['ADMIN'])];
-export const requireMechanicOrAdminRole = [authenticateToken, requireRole(['MECHANIC', 'ADMIN'])];
+// Pre-composed middleware chains for common use cases
+export const requireMechanicRole = [authenticateToken, requireMechanic];
+export const requireAdminRole = [authenticateToken, requireAdmin];
+export const requireMechanicOrAdminRole = [authenticateToken, requireMechanicOrAdmin];
+export const requireCustomerRole = [authenticateToken, requireCustomer];
 
 export const authenticateAndVerify = [authenticateToken, requireVerified];
+export const requireVerifiedCustomer = [authenticateToken, requireVerified, requireCustomer];
 
+/**
+ * Create verified role requirement middleware
+ * @param {string|string[]} allowedRoles - Roles that are allowed
+ */
 export const requireVerifiedRole = (allowedRoles) => {
   return [authenticateToken, requireVerified, requireRole(allowedRoles)];
 };
 
-export const requireVerifiedCustomer = [authenticateToken, requireVerified, requireRole(['END_USER', 'CUSTOMER'])];
-
 // ----------------- Service Request Access Control -----------------
 
+/**
+ * Check if user can access a specific service request
+ */
 export const canAccessServiceRequest = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -340,54 +335,85 @@ export const canAccessServiceRequest = async (req, res, next) => {
 
 // ----------------- Activity Logging -----------------
 
-// Activity logging middleware (enhanced version)
+/**
+ * Activity logging middleware with enhanced error handling
+ * @param {string} action - The action being performed
+ */
 export const logActivity = (action) => {
   return async (req, res, next) => {
     try {
-      // Store activity info for later use
+      // Store activity info for later logging
       req.activityAction = action;
-      req.activityUserId = req.user?.id;
+      req.activityStartTime = Date.now();
       
-      // Store original json method
-      const originalJson = res.json;
-      
-      // Override json method to log successful operations
-      res.json = function(data) {
-        // Only log if the operation was successful AND user exists
-        if (data.success && req.user?.id) {
-          logActivityAfterResponse(action, req.user.id, {
-            method: req.method,
-            endpoint: req.originalUrl,
-            userAgent: req.headers['user-agent'],
-            ip: req.ip,
-            timestamp: new Date(),
-            // Include relevant request data based on action
-            ...(req.body && { requestData: req.body }),
-            ...(req.params && { params: req.params }),
-            ...(req.query && { query: req.query }),
-          }).catch(err => console.error('Activity log error:', err));
-        }
-        
-        // Call original json method
-        return originalJson.call(this, data);
-      };
-      
+      // Continue with the request
       next();
+      
+      // Log successful activity after response (in background)
+      res.on('finish', async () => {
+        try {
+          if (req.user && res.statusCode < 400) {
+            const details = {
+              method: req.method,
+              url: req.originalUrl,
+              userAgent: req.get('User-Agent'),
+              ip: req.ip || req.connection.remoteAddress,
+              duration: Date.now() - req.activityStartTime,
+              statusCode: res.statusCode,
+              timestamp: new Date()
+            };
+            
+            // Add request-specific details
+            if (req.params?.id) {
+              details.resourceId = req.params.id;
+            }
+            
+            if (req.query && Object.keys(req.query).length > 0) {
+              details.queryParams = req.query;
+            }
+
+            // Add relevant body data for certain actions
+            if (req.body && ['CREATE', 'UPDATE', 'DELETE'].some(a => action.includes(a))) {
+              details.requestData = req.body;
+            }
+            
+            await prisma.activityLog.create({
+              data: {
+                action: req.activityAction,
+                userId: req.user.id,
+                details
+              }
+            });
+            
+            console.log('📝 Activity logged:', { userId: req.user.id, action });
+          }
+        } catch (logError) {
+          console.warn('❌ Failed to log activity:', logError);
+        }
+      });
     } catch (error) {
-      console.error('Activity logging middleware error:', error);
+      console.warn('❌ Activity logging middleware error:', error);
       next(); // Continue even if logging fails
     }
   };
 };
 
-// Log activity after request completion
+/**
+ * Manual activity logging function
+ * @param {string} action - The action performed
+ * @param {string} userId - User ID
+ * @param {Object} details - Additional details
+ */
 export const logActivityAfterResponse = async (action, userId, details = {}) => {
   try {
     await prisma.activityLog.create({
       data: {
         action,
         userId,
-        details
+        details: {
+          ...details,
+          timestamp: new Date()
+        }
       }
     });
     console.log('📝 Activity logged:', { userId, action });
@@ -400,25 +426,37 @@ export const logActivityAfterResponse = async (action, userId, details = {}) => 
 // ----------------- Default Export -----------------
 
 export default {
+  // Core authentication
   authenticateToken,
   authenticateJWT,
+  
+  // Verification
   requireVerified,
-  requireRole,
   requireVerifiedEndUser,
-  requireMechanic,
-  requireEndUser,
+  
+  // Role-based authorization
+  requireRole,
   requireAdmin,
+  requireMechanic,
+  requireCustomer,
+  requireEndUser,
   requireMechanicOrAdmin,
   requireEndUserOrAdmin,
-  requireCustomer,
+  requireCustomerOrAdmin,
+  
+  // Middleware combinations
   requireMechanicRole,
   requireAdminRole,
   requireMechanicOrAdminRole,
-  requireCustomerOrAdmin,
+  requireCustomerRole,
   authenticateAndVerify,
   requireVerifiedRole,
   requireVerifiedCustomer,
+  
+  // Access control
   canAccessServiceRequest,
+  
+  // Activity logging
   logActivity,
   logActivityAfterResponse
 };
